@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>Sienna Editor</AssemblyName>
+    <RootNamespace>SiennaEditor</RootNamespace>
+    <Title>Sienna Editor</Title>
+    <Product>Sienna Editor</Product>
+    <PathMap>$(MSBuildProjectDirectory)=/_/src/SiennaEditor</PathMap>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CFGBINManager" Version="[0.2.6]" GeneratePathProperty="true" ExcludeAssets="contentFiles" />
+    <PackageReference Include="Avalonia" Version="12.1.0" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />
+    <EmbeddedResource Include="$(PkgCFGBINManager)/contentFiles/any/any/data/structure.cfg" LogicalName="structure.cfg" />
+  </ItemGroup>
+</Project>
