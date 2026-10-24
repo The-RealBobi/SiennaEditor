@@ -5,6 +5,7 @@
     <RootNamespace>SiennaEditor</RootNamespace>
     <Title>Sienna Editor</Title>
     <Product>Sienna Editor</Product>
+    <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <ApplicationIcon>Assets/app.ico</ApplicationIcon>
     <PathMap>$(MSBuildProjectDirectory)=/_/src/SiennaEditor</PathMap>
   </PropertyGroup>
@@ -14,6 +15,7 @@
     <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />
     <Content Include="$(PkgCFGBINManager)/contentFiles/any/any/data/structure.cfg" Link="data/structure.cfg" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <Content Include="../../LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <AvaloniaResource Include="Assets/app.png" />
     <EmbeddedResource Include="$(PkgCFGBINManager)/contentFiles/any/any/data/structure.cfg" LogicalName="structure.cfg" />
   </ItemGroup>

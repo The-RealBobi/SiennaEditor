@@ -9,5 +9,5 @@ dotnet publish (Join-Path $projectRoot 'src/SiennaEditor/SiennaEditor.csproj') -
     -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false
 if ($LASTEXITCODE -ne 0) { throw 'Sienna Editor publish failed.' }
 $archive = Join-Path $projectRoot "dist/Sienna Editor-$version-$Runtime.zip"
-Compress-Archive -LiteralPath @((Join-Path $output 'Sienna Editor.exe'), (Join-Path $output 'data')) -DestinationPath $archive -Force
+Compress-Archive -LiteralPath @((Join-Path $output 'Sienna Editor.exe'), (Join-Path $output 'data'), (Join-Path $output 'LICENSE')) -DestinationPath $archive -Force
 Write-Output "Created $archive"
