@@ -198,13 +198,13 @@ public sealed partial class EditorWindow
 
     private async void NewClicked(object? sender, RoutedEventArgs args) => await NewDocumentAsync();
 
-    private Task NewDocumentAsync() => RunAsync("New CFGBIN", () =>
+    private Task NewDocumentAsync() => RunAsync("New", () =>
     {
         ApplyFields();
         var session = new EditorSession(catalogRoot, catalog, catalogName)
         { Document = CfgDocument.CreateT2b(catalog), IsAuthoring = true, Dirty = true };
         sessions.Add(session); ActivateSession(session);
-        Status.Text = "New CFGBIN. Add an entry, then add values and choose their types.";
+        Status.Text = "New file. Add an entry, then add values and choose their types.";
         return Task.CompletedTask;
     });
 

@@ -40,13 +40,13 @@
   <Grid x:Name="Workspace" RowDefinitions="25,46,34,*,24">
     <Menu Background="{DynamicResource PanelBrush}">
       <MenuItem Header="File">
-        <MenuItem Header="New CFGBIN" Click="NewClicked" InputGesture="Ctrl+N" />
-        <MenuItem Header="Open…" Click="OpenClicked" InputGesture="Ctrl+O" />
+        <MenuItem Header="New" Click="NewClicked" InputGesture="Ctrl+N" />
+        <MenuItem Header="Open" Click="OpenClicked" InputGesture="Ctrl+O" />
         <Separator />
         <MenuItem Header="Save" Click="SaveClicked" InputGesture="Ctrl+S" />
-        <MenuItem Header="Save as…" Click="SaveBinClicked" />
+        <MenuItem Header="Save as" Click="SaveBinClicked" />
         <MenuItem Header="Save all" Click="SaveAllClicked" />
-        <MenuItem Header="Export CFG…" Click="ExportCfgClicked" />
+        <MenuItem Header="Export CFG" Click="ExportCfgClicked" />
         <Separator />
         <MenuItem Header="Close tab" Click="CloseActiveClicked" InputGesture="Ctrl+W" />
         <MenuItem Header="Exit" Click="ExitClicked" />
@@ -59,7 +59,7 @@
     </Menu>
     <Border Grid.Row="1" Background="{DynamicResource PanelBrush}" Padding="12,7">
       <Grid ColumnDefinitions="Auto,Auto,*">
-        <Button Content="Open…" Click="OpenClicked" Margin="0,0,8,0" AutomationProperties.AutomationId="open-file" />
+        <Button Content="Open" Click="OpenClicked" Margin="0,0,8,0" AutomationProperties.AutomationId="open-file" />
         <Button Grid.Column="1" Content="Save" Click="SaveClicked" Margin="0,0,6,0" Background="{DynamicResource SelectedBrush}" AutomationProperties.AutomationId="save-file" ToolTip.Tip="Save current file (Ctrl/Cmd+S)" />
       </Grid>
     </Border>

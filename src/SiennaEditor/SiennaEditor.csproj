@@ -8,15 +8,20 @@
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <ApplicationIcon>Assets/app.ico</ApplicationIcon>
     <PathMap>$(MSBuildProjectDirectory)=/_/src/SiennaEditor</PathMap>
+    <CfgBinManagerSource>$(MSBuildThisFileDirectory)../../dependency/CFGBINManager</CfgBinManagerSource>
+    <UseCfgBinManagerSource Condition="Exists('$(CfgBinManagerSource)/src/CFGBINManager/CFGBINManager.csproj')">true</UseCfgBinManagerSource>
+    <CfgBinManagerCatalog Condition="'$(UseCfgBinManagerSource)' == 'true'">$(CfgBinManagerSource)/data/structure.cfg</CfgBinManagerCatalog>
+    <CfgBinManagerCatalog Condition="'$(UseCfgBinManagerSource)' != 'true'">$(PkgCFGBINManager)/contentFiles/any/any/data/structure.cfg</CfgBinManagerCatalog>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="CFGBINManager" Version="[1.0.0]" GeneratePathProperty="true" ExcludeAssets="contentFiles" />
+    <ProjectReference Include="$(CfgBinManagerSource)/src/CFGBINManager/CFGBINManager.csproj" Condition="'$(UseCfgBinManagerSource)' == 'true'" />
+    <PackageReference Include="CFGBINManager" Version="[1.0.0]" GeneratePathProperty="true" ExcludeAssets="contentFiles" Condition="'$(UseCfgBinManagerSource)' != 'true'" />
     <PackageReference Include="Avalonia" Version="12.1.0" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />
-    <Content Include="$(PkgCFGBINManager)/contentFiles/any/any/data/structure.cfg" Link="data/structure.cfg" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <Content Include="$(CfgBinManagerCatalog)" Link="data/structure.cfg" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <Content Include="../../LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <AvaloniaResource Include="Assets/app.png" />
-    <EmbeddedResource Include="$(PkgCFGBINManager)/contentFiles/any/any/data/structure.cfg" LogicalName="structure.cfg" />
+    <EmbeddedResource Include="$(CfgBinManagerCatalog)" LogicalName="structure.cfg" />
   </ItemGroup>
 </Project>
