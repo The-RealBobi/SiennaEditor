@@ -11,9 +11,8 @@ internal static class ValueText
     {
         ValueKind.String => value.Text ?? "",
         ValueKind.Signed => value.AsInt64().ToString(Invariant),
-        ValueKind.Unsigned => value.Bits.ToString(Invariant),
-        ValueKind.Hash32 or ValueKind.Opaque => $"0x{value.Bits:X8}",
-        ValueKind.Hash64 => $"0x{value.Bits:X16}",
+        ValueKind.Unsigned or ValueKind.Hash32 or ValueKind.Hash64 => value.Bits.ToString(Invariant),
+        ValueKind.Opaque => $"0x{value.Bits:X8}",
         ValueKind.Boolean => value.AsBoolean() ? "true" : "false",
         ValueKind.Float32 => float.IsNaN(value.AsSingle()) ? $"bits:0x{value.Bits:X8}" : value.AsSingle().ToString("R", Invariant),
         ValueKind.Float64 => double.IsNaN(value.AsDouble()) ? $"bits:0x{value.Bits:X16}" : value.AsDouble().ToString("R", Invariant),

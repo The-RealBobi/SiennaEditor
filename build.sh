@@ -12,7 +12,9 @@ dotnet publish "$root/src/SiennaEditor/SiennaEditor.csproj" -c Release -r "$rid"
 archive="$root/dist/Sienna Editor-$version-$rid.zip"
 if [[ "$rid" == osx-* ]]; then
   bundle="$output/Sienna Editor.app"
-  mkdir -p "$bundle/Contents/MacOS"
+  mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources/data"
+  cp -R "$output/data/." "$bundle/Contents/Resources/data/"
+  cp "$root/src/SiennaEditor/Assets/app.icns" "$bundle/Contents/Resources/app.icns"
   mv "$output/Sienna Editor" "$bundle/Contents/MacOS/Sienna Editor"
   cat > "$bundle/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -22,6 +24,7 @@ if [[ "$rid" == osx-* ]]; then
 <key>CFBundleDisplayName</key><string>Sienna Editor</string>
 <key>CFBundleExecutable</key><string>Sienna Editor</string>
 <key>CFBundleIdentifier</key><string>io.github.the-realbobi.siennaeditor</string>
+<key>CFBundleIconFile</key><string>app.icns</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>$version</string>
 <key>CFBundleVersion</key><string>$version</string>
@@ -34,6 +37,6 @@ else
   executable="Sienna Editor"
   [[ "$rid" == win-* ]] && executable="$executable.exe"
   rm -f "$archive"
-  (cd "$output" && zip -q "$archive" "$executable")
+  (cd "$output" && zip -q -r "$archive" "$executable" data)
 fi
 echo "Created $archive"

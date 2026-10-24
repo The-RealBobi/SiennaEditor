@@ -5,13 +5,16 @@
     <RootNamespace>SiennaEditor</RootNamespace>
     <Title>Sienna Editor</Title>
     <Product>Sienna Editor</Product>
+    <ApplicationIcon>Assets/app.ico</ApplicationIcon>
     <PathMap>$(MSBuildProjectDirectory)=/_/src/SiennaEditor</PathMap>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="CFGBINManager" Version="[0.2.6]" GeneratePathProperty="true" ExcludeAssets="contentFiles" />
+    <PackageReference Include="CFGBINManager" Version="[1.0.0]" GeneratePathProperty="true" ExcludeAssets="contentFiles" />
     <PackageReference Include="Avalonia" Version="12.1.0" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />
+    <Content Include="$(PkgCFGBINManager)/contentFiles/any/any/data/structure.cfg" Link="data/structure.cfg" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <AvaloniaResource Include="Assets/app.png" />
     <EmbeddedResource Include="$(PkgCFGBINManager)/contentFiles/any/any/data/structure.cfg" LogicalName="structure.cfg" />
   </ItemGroup>
 </Project>

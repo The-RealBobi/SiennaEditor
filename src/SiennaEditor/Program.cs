@@ -7,7 +7,11 @@ namespace SiennaEditor;
 internal static class Program
 {
     [STAThread]
-    public static void Main(string[] args) => AppBuilder.Configure<App>().UsePlatformDetect().StartWithClassicDesktopLifetime(args);
+    public static int Main(string[] args)
+    {
+        if (CommandLine.IsCommand(args)) return CommandLine.Run(args);
+        return AppBuilder.Configure<App>().UsePlatformDetect().StartWithClassicDesktopLifetime(args);
+    }
 }
 
 public sealed class App : Application

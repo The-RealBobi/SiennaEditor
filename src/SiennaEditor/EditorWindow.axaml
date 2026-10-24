@@ -1,84 +1,144 @@
 <Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="using:SiennaEditor" x:Class="SiennaEditor.EditorWindow"
-        Title="Sienna Editor" Width="1240" Height="820" MinWidth="900" MinHeight="600"
-        Background="#211C19" Foreground="#EEE5DD" RequestedThemeVariant="Dark">
+        Icon="/Assets/app.png" Title="Sienna Editor" Width="1180" Height="740" MinWidth="860" MinHeight="540"
+        Background="{DynamicResource CanvasBrush}" Foreground="#E3E8ED" FontSize="13"
+        FontFamily="Segoe UI,Helvetica Neue,Arial" RequestedThemeVariant="Dark"
+        DragDrop.AllowDrop="True" DragDrop.DragOver="FileDragOver" DragDrop.Drop="FileDrop">
+  <Window.Resources>
+    <SolidColorBrush x:Key="CanvasBrush">#191D22</SolidColorBrush>
+    <SolidColorBrush x:Key="PanelBrush">#242A32</SolidColorBrush>
+    <SolidColorBrush x:Key="ActionBrush">#35434C</SolidColorBrush>
+    <SolidColorBrush x:Key="ValueBrush">#20262D</SolidColorBrush>
+    <SolidColorBrush x:Key="SelectedBrush">#2C5552</SolidColorBrush>
+    <SolidColorBrush x:Key="LineBrush">#39414B</SolidColorBrush>
+    <SolidColorBrush x:Key="MutedBrush">#A4AFBB</SolidColorBrush>
+  </Window.Resources>
   <Window.Styles>
-    <Style Selector="Button"><Setter Property="Margin" Value="0,0,6,0" /></Style>
-    <Style Selector="TextBox"><Setter Property="FontFamily" Value="Menlo,Consolas,monospace" /></Style>
+    <Style Selector="Button">
+      <Setter Property="MinHeight" Value="28" /><Setter Property="Padding" Value="10,3" />
+      <Setter Property="CornerRadius" Value="4" /><Setter Property="BorderThickness" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="Background" Value="{DynamicResource ActionBrush}" />
+    </Style>
+    <Style Selector="TextBox">
+      <Setter Property="MinHeight" Value="28" /><Setter Property="Padding" Value="7,3" />
+      <Setter Property="CornerRadius" Value="3" /><Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+      <Setter Property="Background" Value="{DynamicResource ValueBrush}" />
+    </Style>
+    <Style Selector="ComboBox">
+      <Setter Property="MinHeight" Value="28" /><Setter Property="Padding" Value="6,3" />
+      <Setter Property="CornerRadius" Value="3" /><Setter Property="Background" Value="{DynamicResource ValueBrush}" />
+    </Style>
+    <Style Selector="ListBoxItem">
+      <Setter Property="MinHeight" Value="25" /><Setter Property="Padding" Value="5,2" /><Setter Property="CornerRadius" Value="3" />
+    </Style>
+    <Style Selector="ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="{DynamicResource SelectedBrush}" /></Style>
+    <Style Selector="ListBoxItem.drop-sibling"><Setter Property="BorderBrush" Value="#69B8AE" /><Setter Property="BorderThickness" Value="0,0,0,2" /></Style>
+    <Style Selector="ListBoxItem.drop-child"><Setter Property="BorderBrush" Value="#69B8AE" /><Setter Property="BorderThickness" Value="2,0,0,2" /></Style>
+    <Style Selector="MenuItem"><Setter Property="Padding" Value="10,3" /></Style>
   </Window.Styles>
-  <Grid RowDefinitions="*,Auto">
-    <Grid x:Name="Workspace" RowDefinitions="Auto,Auto,*" Margin="18">
-      <WrapPanel Grid.Row="0" Margin="0,0,0,12">
-        <Button Content="Open…" Click="OpenClicked" AutomationProperties.AutomationId="open-file" />
-        <Button Content="Load Structure…" Click="StructureClicked" AutomationProperties.AutomationId="load-structure" />
-        <ComboBox x:Name="Profiles" MinWidth="165" Margin="0,0,12,0" SelectionChanged="ProfileChanged" AutomationProperties.AutomationId="profile" />
-        <Button Content="Save BIN as…" Click="SaveBinClicked" AutomationProperties.AutomationId="save-bin" />
-        <Button Content="Export CFG…" Click="ExportCfgClicked" AutomationProperties.AutomationId="export-cfg" />
-        <Button Content="Schema…" Click="SchemaClicked" AutomationProperties.AutomationId="inspect-schema" />
-      </WrapPanel>
-      <Border Grid.Row="1" Background="#302722" Padding="12" Margin="0,0,0,12">
-        <StackPanel Spacing="4">
-          <TextBlock x:Name="FileTitle" Text="Open a BIN or CFG file to begin" FontSize="18" FontWeight="SemiBold" />
-          <TextBlock x:Name="FileInfo" Text="The bundled Structure is ready. You can load your own catalog." Foreground="#C5AEA0" TextWrapping="Wrap" />
-        </StackPanel>
-      </Border>
-      <Grid Grid.Row="2" ColumnDefinitions="350,8,*">
-        <Grid RowDefinitions="Auto,Auto,*,Auto">
-          <ComboBox x:Name="Types" HorizontalAlignment="Stretch" SelectionChanged="FilterChanged" AutomationProperties.AutomationId="record-type" />
-          <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,8">
-            <TextBox x:Name="Search" PlaceholderText="Find a record or value" KeyDown="SearchKeyDown" AutomationProperties.AutomationId="search-records" />
-            <Button Grid.Column="1" Content="Find" Click="FindClicked" Margin="6,0,0,0" />
-          </Grid>
-          <ListBox Grid.Row="2" x:Name="Records" SelectionChanged="RecordChanged" AutomationProperties.AutomationId="records">
-            <ListBox.ItemTemplate>
-              <DataTemplate x:DataType="local:RecordChoice">
-                <StackPanel Margin="2,4" Spacing="3">
-                  <TextBlock Text="{Binding Heading}" TextWrapping="Wrap" FontWeight="SemiBold" />
-                  <TextBlock Text="{Binding Preview}" TextTrimming="CharacterEllipsis" Foreground="#C5AEA0" FontSize="12" />
-                </StackPanel>
-              </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
-          <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto" Margin="0,8,0,0">
-            <Button x:Name="Previous" Content="←" Click="PreviousClicked" AutomationProperties.AutomationId="previous-page" />
-            <TextBlock Grid.Column="1" x:Name="PageInfo" VerticalAlignment="Center" HorizontalAlignment="Center" />
-            <Button Grid.Column="2" x:Name="Next" Content="→" Click="NextClicked" Margin="0" AutomationProperties.AutomationId="next-page" />
-          </Grid>
-        </Grid>
-        <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="#514137" />
-        <Grid Grid.Column="2" RowDefinitions="Auto,Auto,*" Margin="14,0,0,0">
-          <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-            <Button Content="Apply row" Click="ApplyClicked" AutomationProperties.AutomationId="apply-row" />
-            <Button Content="Revert row" Click="RevertClicked" AutomationProperties.AutomationId="revert-row" />
-            <Button Content="Duplicate" Click="DuplicateClicked" AutomationProperties.AutomationId="duplicate-row" />
-            <Button Content="Delete" Click="DeleteClicked" AutomationProperties.AutomationId="delete-row" />
+  <Grid x:Name="Workspace" RowDefinitions="25,46,34,*,24">
+    <Menu Background="{DynamicResource PanelBrush}">
+      <MenuItem Header="File">
+        <MenuItem Header="New CFGBIN" Click="NewClicked" InputGesture="Ctrl+N" />
+        <MenuItem Header="Open…" Click="OpenClicked" InputGesture="Ctrl+O" />
+        <Separator />
+        <MenuItem Header="Save" Click="SaveClicked" InputGesture="Ctrl+S" />
+        <MenuItem Header="Save as…" Click="SaveBinClicked" />
+        <MenuItem Header="Save all" Click="SaveAllClicked" />
+        <MenuItem Header="Export CFG…" Click="ExportCfgClicked" />
+        <Separator />
+        <MenuItem Header="Close tab" Click="CloseActiveClicked" InputGesture="Ctrl+W" />
+        <MenuItem Header="Exit" Click="ExitClicked" />
+      </MenuItem>
+      <MenuItem Header="Settings" Click="SettingsClicked" />
+      <MenuItem Header="Tools">
+        <MenuItem Header="Export batch…" Click="ExportBatchClicked" InputGesture="Ctrl+Shift+E" />
+        <MenuItem Header="ConflictMerge" Click="ConflictMergeClicked" />
+      </MenuItem>
+    </Menu>
+    <Border Grid.Row="1" Background="{DynamicResource PanelBrush}" Padding="12,7">
+      <Grid ColumnDefinitions="Auto,Auto,*">
+        <Button Content="Open…" Click="OpenClicked" Margin="0,0,8,0" AutomationProperties.AutomationId="open-file" />
+        <Button Grid.Column="1" Content="Save" Click="SaveClicked" Margin="0,0,6,0" Background="{DynamicResource SelectedBrush}" AutomationProperties.AutomationId="save-file" ToolTip.Tip="Save current file (Ctrl/Cmd+S)" />
+      </Grid>
+    </Border>
+    <ListBox Grid.Row="2" x:Name="Tabs" Margin="12,3,12,0" Background="Transparent" BorderThickness="0,0,0,1" BorderBrush="{DynamicResource LineBrush}"
+             SelectionChanged="TabChanged" ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled"
+             AutomationProperties.AutomationId="document-tabs">
+      <ListBox.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ListBox.ItemsPanel>
+      <ListBox.Styles>
+        <Style Selector="ListBoxItem"><Setter Property="Background" Value="{DynamicResource PanelBrush}" /><Setter Property="Margin" Value="0,0,4,0" /><Setter Property="Padding" Value="9,2" /><Setter Property="CornerRadius" Value="4,4,0,0" /></Style>
+      </ListBox.Styles>
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="local:EditorSession">
+          <StackPanel Orientation="Horizontal" Spacing="9" ToolTip.Tip="{Binding SourcePath}">
+            <TextBlock Text="{Binding Title}" MaxWidth="290" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+            <Button Content="×" Width="20" MinHeight="22" Padding="0" Background="Transparent" Click="CloseTabClicked" AutomationProperties.Name="Close file" />
           </StackPanel>
-          <TextBlock Grid.Row="1" x:Name="RowInfo" Margin="0,0,0,10" TextWrapping="Wrap" Foreground="#C5AEA0"
-                     Text="Fields keep their native order. Edits apply when you select another record." />
-          <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled">
-            <ItemsControl x:Name="Fields" AutomationProperties.AutomationId="fields">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="local:FieldEdit">
-                  <Border BorderBrush="#514137" BorderThickness="0,0,0,1" Padding="0,8">
-                    <Grid ColumnDefinitions="230,*,Auto">
-                      <StackPanel Margin="0,0,10,0" Spacing="3">
-                        <TextBlock Text="{Binding Label}" TextWrapping="Wrap" />
-                        <TextBlock Text="{Binding Kind}" FontSize="11" Foreground="#C5AEA0" />
-                      </StackPanel>
-                      <TextBox Grid.Column="1" Text="{Binding Text,Mode=TwoWay}" IsEnabled="{Binding CanEdit}"
-                               AcceptsReturn="{Binding IsString}" TextWrapping="Wrap" MaxHeight="180" MinWidth="120" />
-                      <CheckBox Grid.Column="2" Margin="8,0,0,0" Content="null" IsVisible="{Binding IsString}" IsChecked="{Binding IsNull,Mode=TwoWay}" />
-                    </Grid>
-                  </Border>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </ScrollViewer>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+    <Grid Grid.Row="3" ColumnDefinitions="320,9,*" Margin="12,10,12,0">
+      <Grid RowDefinitions="24,36,0,*">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Grid.Column="1" x:Name="RecordsCount" Foreground="{DynamicResource MutedBrush}" />
         </Grid>
+        <Grid Grid.Row="1" ColumnDefinitions="*,36" Margin="0,0,0,7">
+          <TextBox x:Name="Search" PlaceholderText="Search entries and values" TextChanged="SearchChanged" KeyDown="SearchKeyDown" AutomationProperties.AutomationId="search-records" />
+          <Button Grid.Column="1" x:Name="RootAdd" HorizontalAlignment="Stretch" Content="+" FontSize="20" Padding="0" Margin="5,0,0,0" Click="AddRootClicked" ToolTip.Tip="Add root entry" AutomationProperties.AutomationId="add-root" AutomationProperties.Name="Add root entry" />
+        </Grid>
+        <ListBox Grid.Row="3" x:Name="Records" Background="{DynamicResource ValueBrush}" BorderThickness="0"
+                 SelectionChanged="RecordChanged" KeyDown="TreeKeyDown" PointerPressed="RecordPointerPressed" AutomationProperties.AutomationId="records">
+          <ListBox.ContextMenu>
+            <ContextMenu>
+              <MenuItem x:Name="AddContext" Header="Add entry" AutomationProperties.AutomationId="add-entry-context">
+                <MenuItem Header="As child" Click="AddChildClicked" AutomationProperties.AutomationId="add-child-context" />
+              </MenuItem>
+              <MenuItem Header="Duplicate" Click="DuplicateClicked" />
+              <MenuItem Header="Remove" Click="DeleteClicked" />
+            </ContextMenu>
+          </ListBox.ContextMenu>
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="local:RecordBranch">
+              <Grid ColumnDefinitions="17,*" Margin="{Binding Indent}" MinHeight="23" ToolTip.Tip="{Binding Heading}">
+                <Button Content="{Binding Toggle}" IsVisible="{Binding HasChildren}" Click="ToggleClicked" Width="17" MinHeight="23"
+                        Padding="0" Background="Transparent" AutomationProperties.Name="{Binding ToggleName}" />
+                <TextBlock Grid.Column="1" Text="{Binding Heading}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Grid>
+      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="Transparent" />
+      <Grid Grid.Column="2" RowDefinitions="31,26,*" Margin="7,0,0,0">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Text="Fields" FontWeight="SemiBold" VerticalAlignment="Center" />
+          <Button Grid.Column="1" x:Name="AddValue" Content="Add value" Click="AddValueClicked" AutomationProperties.AutomationId="add-value" />
+        </Grid>
+        <Grid Grid.Row="1" x:Name="FieldHeader" ColumnDefinitions="100,220,*" Margin="0,5,17,0">
+          <TextBlock x:Name="TypeHeader" Text="Type" Foreground="{DynamicResource MutedBrush}" />
+          <TextBlock Grid.Column="1" Text="Name" Foreground="{DynamicResource MutedBrush}" Margin="6,0" />
+          <TextBlock Grid.Column="2" Text="Value" Foreground="{DynamicResource MutedBrush}" Margin="6,0" />
+        </Grid>
+        <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Visible">
+          <ItemsControl x:Name="Fields" AutomationProperties.AutomationId="fields">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="local:FieldEdit">
+                <Grid Margin="0,0,0,5" MinHeight="29">
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="{Binding TypeWidth}" /><ColumnDefinition Width="220" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                  <Grid.ContextMenu><ContextMenu><MenuItem Header="Restore value" Click="RestoreFieldClicked" /><MenuItem Header="Toggle null string" IsEnabled="{Binding IsString}" Click="NullFieldClicked" /><MenuItem Header="Remove value" IsEnabled="{Binding CanRemove}" Click="RemoveValueClicked" /></ContextMenu></Grid.ContextMenu>
+                  <ComboBox Margin="0,0,6,0" ItemsSource="{Binding Kinds}" SelectedItem="{Binding SelectedKind,Mode=TwoWay}" IsVisible="{Binding CanChangeKind}" AutomationProperties.Name="Value type" />
+                  <TextBox Grid.Column="1" Margin="6,0" Text="{Binding Label,Mode=TwoWay}" IsEnabled="{Binding CanEditLabel}" LostFocus="FieldNameLostFocus" ToolTip.Tip="Field names are saved automatically" AutomationProperties.Name="Field name" />
+                  <TextBox Grid.Column="2" Margin="6,0,0,0" Text="{Binding Text,Mode=TwoWay}" IsEnabled="{Binding CanEdit}" AcceptsReturn="{Binding IsString}"
+                           MaxHeight="90" TextWrapping="NoWrap" FontFamily="SF Mono,Cascadia Mono,Consolas,monospace" FontSize="12" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
       </Grid>
     </Grid>
-    <Border Grid.Row="1" Background="#302722" Padding="18,10">
-      <TextBlock x:Name="Status" Text="Ready · decimal or 0x hexadecimal · booleans: true/false · ranges: start, count" TextWrapping="Wrap" />
-    </Border>
+    <TextBlock Grid.Row="4" x:Name="Status" Text="Open a file to begin" Margin="12,4,12,0" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextTrimming="CharacterEllipsis" AutomationProperties.AutomationId="status" />
   </Grid>
 </Window>
