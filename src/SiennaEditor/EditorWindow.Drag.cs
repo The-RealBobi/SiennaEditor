@@ -21,6 +21,7 @@ public sealed partial class EditorWindow
     {
         ClearEntryDrag();
         if (busy || !args.GetCurrentPoint(Records).Properties.IsLeftButtonPressed || args.Source is not Visual source) return;
+        if (Records.SelectedItems?.Count > 1 || (args.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Meta | KeyModifiers.Shift)) != 0) return;
         if (source.GetVisualAncestors().Prepend(source).OfType<Button>().Any()) return;
         if (EntryItem(source)?.DataContext is not RecordBranch { Record: not null } branch) return;
         dragSource = branch; dragStart = args.GetPosition(Records);

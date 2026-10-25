@@ -16,14 +16,19 @@ public sealed partial class EditorWindow
     {
         if (changing || (Search.Text ?? "") == active.Search) return;
         active.Search = Search.Text ?? "";
+        await SearchAsync(TimeSpan.FromMilliseconds(180));
+    }
+
+    private async Task SearchAsync(TimeSpan delay)
+    {
         searchDelay?.Cancel(); searchDelay?.Dispose();
         searchDelay = new CancellationTokenSource();
         var token = searchDelay.Token;
         try
         {
-            await Task.Delay(180, token);
+            await Task.Delay(delay, token);
             while (busy) await Task.Delay(25, token);
-            if (!token.IsCancellationRequested) await RunAsync("Search", FilterAsync);
+            if (!token.IsCancellationRequested) await FindRecordsAsync(token);
         }
         catch (OperationCanceledException) { }
     }
@@ -42,7 +47,7 @@ public sealed partial class EditorWindow
         if (!args.GetCurrentPoint(Records).Properties.IsRightButtonPressed || args.Source is not Visual source) return;
         var item = source.GetVisualAncestors().OfType<ListBoxItem>().FirstOrDefault();
         if (item?.DataContext is not RecordBranch branch) return;
-        try { ApplyFields(); Records.SelectedItem = branch; }
+        try { ApplyFields(); if (Records.SelectedItems?.Contains(branch) != true) Records.SelectedItem = branch; }
         catch (Exception error) { args.Handled = true; Status.Text = "Edit not applied: " + error.Message; }
     }
 
@@ -57,6 +62,28 @@ public sealed partial class EditorWindow
         int index = branches.IndexOf(selected);
         return branches.Skip(index).TakeWhile((branch, offset) => offset == 0 || branch.Depth > selected.Depth)
             .Where(branch => branch.Record is not null).Select(branch => branch.Record!).ToList();
+    }
+
+    private async Task RemoveSelectedRecordsAsync()
+    {
+        if (document is null) throw new InvalidOperationException("Open a file first.");
+        ApplyFields();
+        var selection = (Records.SelectedItems?.OfType<RecordBranch>() ?? []).ToHashSet();
+        var selected = new List<RecordChoice>();
+        int selectedDepth = int.MaxValue;
+        foreach (var branch in branches)
+        {
+            if (branch.Depth <= selectedDepth) selectedDepth = int.MaxValue;
+            if (selection.Contains(branch)) selectedDepth = Math.Min(selectedDepth, branch.Depth);
+            if (selectedDepth != int.MaxValue && branch.Record is not null) selected.Add(branch.Record);
+        }
+        if (selected.Count == 0) throw new InvalidOperationException("Select entries to remove.");
+        if (!await AskAsync("Remove entries", $"Remove {selected.Count:N0} entries, including contained children?", "Remove")) return;
+        await EditDocumentAsync(copy =>
+        {
+            var rows = selected.Select(item => item.ListName is null ? copy.Rows[item.ListIndex] : copy.GetList(item.ListName).Rows[item.ListIndex]).ToArray();
+            copy.RemoveRows(rows);
+        }, selected[0].Ordinal, "Entries removed; counts and references recalculated.");
     }
 
     private async Task EditDocumentAsync(Action<CfgDocument> edit, int focusOrdinal, string message)

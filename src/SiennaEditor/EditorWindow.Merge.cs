@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Templates;
 using Avalonia.Data;
 using Avalonia.Interactivity;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
@@ -82,9 +83,12 @@ public sealed partial class EditorWindow
         var close = new Button { Content = "Close" };
         var useCurrent = new Button { Content = "Use File 1 for all", IsEnabled = false };
         var useIncoming = new Button { Content = "Use File 2 for all", IsEnabled = false };
+        var removeSelected = new Button { Content = "Remove selected", IsEnabled = false };
+        AutomationProperties.SetAutomationId(removeSelected, "merge-remove-selected");
         var conflictBrush = new SolidColorBrush(Color.Parse("#E7C55B"));
         var additionBrush = new SolidColorBrush(Color.Parse("#75C998"));
-        var changeTree = new ListBox();
+        var changeTree = new ListBox { SelectionMode = SelectionMode.Multiple };
+        AutomationProperties.SetAutomationId(changeTree, "merge-entries");
         var detailsTitle = new TextBlock { Text = "Select an entry to inspect its fields.", TextWrapping = TextWrapping.Wrap, FontSize = 15 };
         var conflictList = new ListBox();
         conflictList.Styles.Add(new Style(selector => selector.OfType<ListBoxItem>())
@@ -95,18 +99,24 @@ public sealed partial class EditorWindow
         var decisions = new List<MergeDecision>();
         var decisionsById = new Dictionary<int, MergeDecision>();
         var treeRows = new List<MergeTreeRow>();
+        var excludedEntries = new HashSet<MergeEntry>(ReferenceEqualityComparer.Instance);
+        var excludedConflicts = new HashSet<int>();
         CfgDocument? currentFile = null, incomingFile = null; CfgMergePlan? plan = null;
         bool working = false, settingAll = false, compatible = false;
+        IEnumerable<MergeDecision> ActiveDecisions() => decisions.Where(item => !excludedConflicts.Contains(item.Conflict.Id));
         void UpdateDecisions()
         {
             if (settingAll || plan is null) return;
-            int resolved = decisions.Count(item => item.Choice is not null);
-            summary.Text = $"{plan.MatchedRows:N0} matched · {plan.AddedRows:N0} File 2 only · {plan.CurrentOnlyRows:N0} File 1 only rows. {resolved:N0} / {decisions.Count:N0} conflicts resolved.";
-            create.IsEnabled = resolved == decisions.Count;
+            var activeDecisions = ActiveDecisions().ToArray();
+            int resolved = activeDecisions.Count(item => item.Choice is not null);
+            summary.Text = $"{plan.MatchedRows:N0} matched · {plan.AddedRows:N0} File 2 only · {plan.CurrentOnlyRows:N0} File 1 only rows. {resolved:N0} / {activeDecisions.Length:N0} conflicts resolved. {excludedEntries.Count:N0} entries removed from result.";
+            create.IsEnabled = !working && resolved == activeDecisions.Length;
+            removeSelected.IsEnabled = !working && changeTree.SelectedItems?.Count > 0;
         }
         void ClearAnalysis()
         {
             plan = null; decisions.Clear(); decisionsById.Clear(); conflictList.ItemsSource = null;
+            excludedEntries.Clear(); excludedConflicts.Clear(); removeSelected.IsEnabled = false;
             treeRows.Clear(); changeTree.ItemsSource = null; detailsTitle.Text = "Select an entry to inspect its fields.";
             create.IsEnabled = false; useCurrent.IsEnabled = false; useIncoming.IsEnabled = false;
         }
@@ -114,8 +124,9 @@ public sealed partial class EditorWindow
         {
             working = value; inputRows.IsEnabled = !value;
             analyze.IsEnabled = !value && compatible;
-            close.IsEnabled = !value; create.IsEnabled = !value && plan is not null && decisions.All(item => item.Choice is not null);
-            useCurrent.IsEnabled = !value && decisions.Count > 0; useIncoming.IsEnabled = !value && decisions.Count > 0;
+            close.IsEnabled = !value; create.IsEnabled = !value && plan is not null && ActiveDecisions().All(item => item.Choice is not null);
+            useCurrent.IsEnabled = !value && ActiveDecisions().Any(); useIncoming.IsEnabled = !value && ActiveDecisions().Any();
+            removeSelected.IsEnabled = !value && plan is not null && changeTree.SelectedItems?.Count > 0;
             conflictList.IsEnabled = !value;
             changeTree.IsEnabled = !value;
         }
@@ -124,18 +135,29 @@ public sealed partial class EditorWindow
             detailsTitle.Text = row.Entry.Label;
             ToolTip.SetTip(detailsTitle, row.Entry.Location);
             var fields = row.Entry.Fields.Select(field => (Field: field, row.Entry.State))
-                .Concat(treeRows.Where(child => child.Parent == row && child.Entry.IsClosing).SelectMany(child => child.Entry.Fields.Select(field => (Field: field with { Name = "End / " + field.Name }, child.Entry.State))));
+                .Concat(treeRows.Where(child => child.Parent == row && child.Entry.IsClosing && !excludedEntries.Contains(child.Entry)).SelectMany(child => child.Entry.Fields.Select(field => (Field: field with { Name = "End / " + field.Name }, child.Entry.State))));
             conflictList.ItemsSource = fields.Select(item => new MergeFieldRow(item.Field, item.State,
                 item.Field.ConflictId is int id ? decisionsById[id] : null)).ToArray();
         }
         void RefreshTree(MergeTreeRow? selected)
         {
+            var selection = changeTree.SelectedItems?.OfType<MergeTreeRow>().ToArray() ?? [];
+            foreach (var row in treeRows)
+            {
+                row.HasConflicts = row.Entry.Fields.Any(field => field.ConflictId is int id && !excludedConflicts.Contains(id));
+                row.HasAdditions = !excludedEntries.Contains(row.Entry) && row.Entry.State is MergeEntryState.File1Only or MergeEntryState.File2Only;
+            }
+            foreach (var row in treeRows.AsEnumerable().Reverse().Where(row => !excludedEntries.Contains(row.Entry)))
+                if (row.Parent is { } parent) { parent.HasConflicts |= row.HasConflicts; parent.HasAdditions |= row.HasAdditions; }
+            var parentsWithChildren = treeRows.Where(row => row.HasChanges && !row.Entry.IsClosing && !excludedEntries.Contains(row.Entry)).Select(row => row.Parent).ToHashSet();
+            foreach (var row in treeRows) row.HasChildren = parentsWithChildren.Contains(row);
             var shown = new HashSet<MergeTreeRow>(); var visible = new List<MergeTreeRow>();
             foreach (var row in treeRows)
-                if (row.HasChanges && !row.Entry.IsClosing && (row.Parent is null || shown.Contains(row.Parent) && row.Parent.IsExpanded))
+                if (row.HasChanges && !row.Entry.IsClosing && !excludedEntries.Contains(row.Entry) && (row.Parent is null || shown.Contains(row.Parent) && row.Parent.IsExpanded))
                 { shown.Add(row); visible.Add(row); }
             changeTree.ItemsSource = visible;
-            if (selected is not null && visible.Contains(selected)) changeTree.SelectedItem = selected;
+            foreach (var row in selection.Where(visible.Contains)) changeTree.SelectedItems?.Add(row);
+            if (selected is not null && visible.Contains(selected) && changeTree.SelectedItems?.Contains(selected) != true) changeTree.SelectedItems?.Add(selected);
         }
         void BuildTree()
         {
@@ -162,9 +184,43 @@ public sealed partial class EditorWindow
             if (selected is not null) { ShowFields(selected); changeTree.ScrollIntoView(selected); }
             else detailsTitle.Text = "The files have no changes.";
         }
-        changeTree.SelectionChanged += (_, _) => { if (changeTree.SelectedItem is MergeTreeRow row) ShowFields(row); };
-        changeTree.KeyDown += (_, e) =>
+        async Task RemoveSelectedAsync()
         {
+            if (working || plan is null) return;
+            var selection = changeTree.SelectedItems?.OfType<MergeTreeRow>().ToArray() ?? [];
+            if (selection.Length == 0) return;
+            var removed = new HashSet<MergeEntry>(ReferenceEqualityComparer.Instance);
+            var pending = new Stack<MergeEntry>(selection.Select(row => row.Entry));
+            while (pending.TryPop(out var entry))
+                if (removed.Add(entry)) foreach (var child in entry.Children) pending.Push(child);
+            if (!await AskAsync(dialog, "Remove from result", $"Remove {removed.Count:N0} entries from the merged result, including contained children?", "Remove")) return;
+            excludedEntries.UnionWith(removed);
+            foreach (var field in removed.SelectMany(entry => entry.Fields))
+                if (field.ConflictId is int id) excludedConflicts.Add(id);
+            changeTree.SelectedItems?.Clear();
+            RefreshTree(null);
+            if (changeTree.ItemsSource?.Cast<MergeTreeRow>().FirstOrDefault() is { } first) changeTree.SelectedItem = first;
+            else { conflictList.ItemsSource = null; detailsTitle.Text = "No changed entries remain."; }
+            UpdateDecisions();
+        }
+        removeSelected.Click += async (_, _) => await RemoveSelectedAsync();
+        var removeMenu = new MenuItem { Header = "Remove selected" };
+        removeMenu.Click += async (_, _) => await RemoveSelectedAsync();
+        changeTree.ContextMenu = new ContextMenu { ItemsSource = new[] { removeMenu } };
+        changeTree.PointerPressed += (_, e) =>
+        {
+            if (!e.GetCurrentPoint(changeTree).Properties.IsRightButtonPressed || e.Source is not Visual source) return;
+            if (EntryItem(source)?.DataContext is MergeTreeRow row && changeTree.SelectedItems?.Contains(row) != true) changeTree.SelectedItem = row;
+        };
+        changeTree.SelectionChanged += (_, _) =>
+        {
+            if (plan is not null && changeTree.SelectedItem is MergeTreeRow row) ShowFields(row);
+            removeSelected.IsEnabled = !working && plan is not null && changeTree.SelectedItems?.Count > 0;
+        };
+        changeTree.KeyDown += async (_, e) =>
+        {
+            if (e.Key == Key.Delete || e.Key == Key.Back && e.KeyModifiers.HasFlag(KeyModifiers.Meta))
+            { e.Handled = true; await RemoveSelectedAsync(); return; }
             if (changeTree.SelectedItem is not MergeTreeRow row || e.Key is not (Avalonia.Input.Key.Left or Avalonia.Input.Key.Right)) return;
             e.Handled = true;
             if (e.Key == Avalonia.Input.Key.Right)
@@ -232,7 +288,7 @@ public sealed partial class EditorWindow
             finally { SetWorking(false); }
         };
         void ChooseAll(string side)
-        { settingAll = true; foreach (var decision in decisions) decision.Choice = side; settingAll = false; UpdateDecisions(); }
+        { settingAll = true; foreach (var decision in ActiveDecisions()) decision.Choice = side; settingAll = false; UpdateDecisions(); }
         useCurrent.Click += (_, _) => ChooseAll("File 1"); useIncoming.Click += (_, _) => ChooseAll("File 2");
         conflictList.ItemTemplate = new FuncDataTemplate<MergeFieldRow>((item, _) =>
         {
@@ -252,7 +308,7 @@ public sealed partial class EditorWindow
                 AutomationProperties.SetName(choice, "Keep value for " + decision.Conflict.Location + "." + item.Field.Name);
                 choice.Bind(ComboBox.SelectedItemProperty, new Binding(nameof(MergeDecision.Choice)) { Source = decision, Mode = BindingMode.TwoWay }); resolution = choice;
             }
-            else resolution = new TextBlock { Text = item.Field.AutomaticValue is { } automatic ? "Automatic: " + MergeValueText(automatic)
+            else resolution = new TextBlock { Text = item.Field.AutomaticValue is { } automatic ? excludedEntries.Count > 0 ? "Updated when merged" : "Automatic: " + MergeValueText(automatic)
                 : item.State == MergeEntryState.File1Only ? "Added from File 1" : item.State == MergeEntryState.File2Only ? "Added from File 2" : "Unchanged",
                 VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap,
                 Foreground = item.State is MergeEntryState.File1Only or MergeEntryState.File2Only ? additionBrush : Foreground };
@@ -260,12 +316,13 @@ public sealed partial class EditorWindow
         });
         create.Click += async (_, _) =>
         {
-            if (working || plan is null || decisions.Any(item => item.Choice is null)) return;
-            var choices = decisions.ToDictionary(item => item.Conflict.Id, item => item.Choice == "File 1" ? MergeSide.Current : MergeSide.Incoming);
+            if (working || plan is null || ActiveDecisions().Any(item => item.Choice is null)) return;
+            var choices = ActiveDecisions().ToDictionary(item => item.Conflict.Id, item => item.Choice == "File 1" ? MergeSide.Current : MergeSide.Incoming);
             SetWorking(true); summary.Text = "Rebuilding and validating the merged file…";
             try
             {
-                var merged = await Task.Run(() => CfgTextCodec.Read(CfgTextCodec.Write(plan.Build(choices)), chosenCatalog));
+                var excluded = excludedEntries.ToArray();
+                var merged = await Task.Run(() => CfgTextCodec.Read(CfgTextCodec.Write(plan.Build(choices, excluded)), chosenCatalog));
                 _ = merged.GetRecordTree(); working = false; dialog.Close(merged);
             }
             catch (Exception error) { summary.Text = "Cannot create the merged file: " + error.Message; }
@@ -276,7 +333,7 @@ public sealed partial class EditorWindow
         var conflictHeader = new Grid { ColumnDefinitions = new ColumnDefinitions("1.5*,2*,2*,135"), ColumnSpacing = 10 };
         string[] headers = ["Field", "File 1", "File 2", "Result"];
         for (int i = 0; i < headers.Length; i++) { var label = new TextBlock { Text = headers[i] }; Grid.SetColumn(label, i); conflictHeader.Children.Add(label); }
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { analyze, useCurrent, useIncoming } };
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { analyze, useCurrent, useIncoming, removeSelected } };
         var footer = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 10, Children = { create, close } };
         var legend = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 18, Children =
         { new TextBlock { Text = "Conflicts", Foreground = conflictBrush, TextDecorations = TextDecorations.Underline }, new TextBlock { Text = "Additions", Foreground = additionBrush } } };

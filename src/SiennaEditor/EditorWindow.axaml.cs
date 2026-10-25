@@ -62,13 +62,21 @@ public sealed partial class EditorWindow : Window
         Records.AddHandler(PointerReleasedEvent, DragEntryReleased, RoutingStrategies.Tunnel);
     }
 
-    private async Task<bool> RunAsync(string operation, Func<Task> action)
+    private Task<bool> RunAsync(string operation, Func<Task> action) => RunAsync(operation, action, [Workspace, Profiles]);
+
+    private async Task<bool> RunAsync(string operation, Func<Task> action, IReadOnlyList<Control> controls)
     {
         if (busy) return false;
-        busy = true; Workspace.IsEnabled = false; Profiles.IsEnabled = false; Status.Text = operation + "…";
+        busy = true;
+        foreach (var control in controls) control.IsEnabled = false;
+        Status.Text = operation + "…";
         try { await action(); return true; }
         catch (Exception error) { Status.Text = $"{operation} failed: {error.Message}"; return false; }
-        finally { Workspace.IsEnabled = true; Profiles.IsEnabled = true; busy = false; UpdateControls(); UpdateTitle(); }
+        finally
+        {
+            foreach (var control in controls) control.IsEnabled = true;
+            busy = false; UpdateControls(); UpdateTitle();
+        }
     }
 
     public Task<bool> OpenPathAsync(string path) => RunAsync("Open file", async () =>
@@ -211,12 +219,17 @@ public sealed partial class EditorWindow : Window
         UpdateControls();
     }
 
-    private async Task FilterAsync()
+    private Task<bool> FindRecordsAsync(CancellationToken token) => RunAsync("Search", () => FilterAsync(token),
+        [MainMenu, FileActions, Tabs, Records, FieldPanel, RootAdd, Profiles]);
+
+    private async Task FilterAsync(CancellationToken token)
     {
         ApplyFields();
         string text = Search.Text?.Trim() ?? "";
         active.Search = Search.Text ?? "";
-        matching = await Task.Run(() => allRecords.Where(item => Matches(item, text)).ToList());
+        var results = await Task.Run(() => allRecords.Where(item => Matches(item, text)).ToList());
+        if (token.IsCancellationRequested) return;
+        matching = results;
         IncludeMatches(text.Length > 0); ShowPage();
         Status.Text = $"{matching.Count:N0} matching records; parent records remain visible.";
     }
@@ -278,6 +291,12 @@ public sealed partial class EditorWindow : Window
 
     private async void TreeKeyDown(object? sender, KeyEventArgs args)
     {
+        if (args.Key == Key.Delete || args.Key == Key.Back && args.KeyModifiers.HasFlag(KeyModifiers.Meta))
+        {
+            args.Handled = true;
+            await RunAsync("Remove entries", RemoveSelectedRecordsAsync);
+            return;
+        }
         if (Records.SelectedItem is not RecordBranch branch || args.Key is not (Key.Left or Key.Right)) return;
         args.Handled = true;
         await RunAsync("Navigate records", () =>
@@ -403,45 +422,38 @@ public sealed partial class EditorWindow : Window
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 
-    private async Task ChangeRowAsync(bool remove)
+    private async Task DuplicateRecordAsync()
     {
         if (document is null || current is null) throw new InvalidOperationException("Select a record first.");
         ApplyFields(); var selected = SelectedRecords();
-        if (remove && !await AskAsync("Remove records", $"Remove {selected.Count} record(s), including contained children?", "Remove")) return;
-        int ordinal = current.Ordinal, insertion = selected[^1].ListIndex + 1;
+        int insertion = selected[^1].ListIndex + 1;
         string? listName = current.ListName;
-        int focus = remove ? ordinal : selected[^1].Ordinal + 1;
         await EditDocumentAsync(copy =>
         {
             if (listName is null)
             {
-                if (remove) foreach (var row in selected.AsEnumerable().Reverse()) copy.RemoveRow(row.ListIndex);
-                else
-                {
-                    var clones = selected.Select(item => copy.Rows[item.ListIndex].Clone()).ToArray();
-                    foreach (var row in clones) copy.InsertRow(insertion++, row);
-                }
+                var clones = selected.Select(item => copy.Rows[item.ListIndex].Clone()).ToArray();
+                foreach (var row in clones) copy.InsertRow(insertion++, row);
             }
             else
             {
-                if (remove) foreach (var row in selected.AsEnumerable().Reverse()) copy.RemoveListRow(listName, row.ListIndex);
-                else
-                {
-                    var clones = selected.Select(item => copy.GetList(listName).Rows[item.ListIndex].Clone()).ToArray();
-                    foreach (var row in clones) copy.InsertListRow(listName, insertion++, row);
-                }
+                var clones = selected.Select(item => copy.GetList(listName).Rows[item.ListIndex].Clone()).ToArray();
+                foreach (var row in clones) copy.InsertListRow(listName, insertion++, row);
             }
-        }, focus, remove ? "Records removed; supported counts and references recalculated." : "Branch duplicated. Edit identifiers where uniqueness is required.");
+        }, selected[^1].Ordinal + 1, "Branch duplicated. Edit identifiers where uniqueness is required.");
     }
 
     private async Task<bool> AskAsync(string title, string message, string accept)
+        => await AskAsync(this, title, message, accept);
+
+    private async Task<bool> AskAsync(Window owner, string title, string message, string accept)
     {
         var dialog = new Window { Title = title, Width = 470, Height = 190, CanResize = false, WindowStartupLocation = WindowStartupLocation.CenterOwner };
         var yes = new Button { Content = accept };
         var no = new Button { Content = "Keep editing" };
         yes.Click += (_, _) => dialog.Close(true); no.Click += (_, _) => dialog.Close(false);
         dialog.Content = new StackPanel { Margin = new Thickness(20), Spacing = 18, Children = { new TextBlock { Text = message, TextWrapping = Avalonia.Media.TextWrapping.Wrap }, new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 12, Children = { no, yes } } } };
-        return await dialog.ShowDialog<bool>(this);
+        return await dialog.ShowDialog<bool>(owner);
     }
 
     private async void ClosingWindow(object? sender, WindowClosingEventArgs args)
@@ -466,11 +478,16 @@ public sealed partial class EditorWindow : Window
         else if (args.Key == Key.W) { args.Handled = true; await CloseSessionAsync(active); }
     }
 
-    private async void SearchKeyDown(object? sender, KeyEventArgs args) { if (args.Key == Key.Enter) { searchDelay?.Cancel(); args.Handled = true; await RunAsync("Find records", FilterAsync); } }
+    private async void SearchKeyDown(object? sender, KeyEventArgs args)
+    {
+        if (args.Key != Key.Enter) return;
+        args.Handled = true;
+        await SearchAsync(TimeSpan.Zero);
+    }
     private async void SaveBinClicked(object? sender, RoutedEventArgs args) => await RunAsync("Save BIN", () => SaveAsync(false));
     private async void ExportCfgClicked(object? sender, RoutedEventArgs args) => await RunAsync("Export CFG", () => SaveAsync(true));
-    private async void DuplicateClicked(object? sender, RoutedEventArgs args) => await RunAsync("Duplicate record", () => ChangeRowAsync(false));
-    private async void DeleteClicked(object? sender, RoutedEventArgs args) => await RunAsync("Delete record", () => ChangeRowAsync(true));
+    private async void DuplicateClicked(object? sender, RoutedEventArgs args) => await RunAsync("Duplicate record", DuplicateRecordAsync);
+    private async void DeleteClicked(object? sender, RoutedEventArgs args) => await RunAsync("Remove entries", RemoveSelectedRecordsAsync);
     private async void SchemaClicked(object? sender, RoutedEventArgs args)
     {
         if (document is null) { Status.Text = "Open a file to inspect its schema."; return; }
