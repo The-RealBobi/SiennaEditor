@@ -43,6 +43,14 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Checkout CFGBINManager source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: The-RealBobi/CFGBINManager
+          ref: a5af615b40dc9afcb3934d8e68f8dfb5adc31da9 # 1.0.2
+          path: dependency/CFGBINManager
+          persist-credentials: false
+
       - name: Package Windows application
         if: runner.os == 'Windows'
         shell: pwsh

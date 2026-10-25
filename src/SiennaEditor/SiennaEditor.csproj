@@ -15,7 +15,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="$(CfgBinManagerSource)/src/CFGBINManager/CFGBINManager.csproj" Condition="'$(UseCfgBinManagerSource)' == 'true'" />
-    <PackageReference Include="CFGBINManager" Version="[1.0.0]" GeneratePathProperty="true" ExcludeAssets="contentFiles" Condition="'$(UseCfgBinManagerSource)' != 'true'" />
+    <PackageReference Include="CFGBINManager" Version="[1.0.2]" GeneratePathProperty="true" ExcludeAssets="contentFiles" Condition="'$(UseCfgBinManagerSource)' != 'true'" />
     <PackageReference Include="Avalonia" Version="12.1.0" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />

@@ -35,8 +35,9 @@ internal static class DocumentFiles
     }
 
     public static IReadOnlyList<MergeKey> MergeKeys(CfgDocument file1, CfgDocument file2)
-        => CfgMergePlan.GetKeyOptions(file1, file2).Where(option => option.SuggestedPosition.HasValue)
-            .Select(option => new MergeKey(option.Scope, option.Entry, option.SuggestedPosition!.Value)).ToArray();
+        => CfgMergePlan.GetKeyOptions(file1, file2).Where(option => option.SuggestedKeyPositions.Count > 0)
+            .Select(option => new MergeKey(option.Scope, option.Entry, option.SuggestedKeyPositions[0])
+                { AdditionalPositions = option.SuggestedKeyPositions.Skip(1).ToArray() }).ToArray();
 
     public static byte[] Export(CfgDocument document)
     {
