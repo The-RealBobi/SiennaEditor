@@ -24,4 +24,12 @@
     <AvaloniaResource Include="Assets/app.png" />
     <EmbeddedResource Include="$(CfgBinManagerCatalog)" LogicalName="structure.cfg" />
   </ItemGroup>
+  <Target Name="KeepCatalogExternal" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <!-- Project references can supply this file before the host's content metadata. -->
+      <ResolvedFileToPublish Condition="'%(ResolvedFileToPublish.RelativePath)' == 'data/structure.cfg' Or '%(ResolvedFileToPublish.RelativePath)' == 'data\structure.cfg'">
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
 </Project>
