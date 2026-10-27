@@ -174,6 +174,8 @@ public sealed partial class EditorWindow : Window
                 CfgDocument? relabeled = document is null ? null : await Task.Run(() => CfgTextCodec.Read(CfgTextCodec.Write(document), selected));
                 _ = relabeled?.GetRecordTree();
                 catalogRoot = choice.File.Root; catalog = selected; catalogName = Path.GetFileName(choice.File.Path);
+                active.AuthoredChildren.Clear();
+                ClearHistoryForCatalogChange(active);
                 document = relabeled; RebuildRecords(); Status.Text = "Structure: " + choice;
             }
             finally { SetProfiles(); }
@@ -193,7 +195,7 @@ public sealed partial class EditorWindow : Window
                     for (int i = 0; i < list.Rows.Count; i++) allRecords.Add(new RecordChoice(allRecords.Count, list.Rows[i], list.Name, i));
         }
         changing = false;
-        matching = allRecords.Where(item => Matches(item, Search.Text?.Trim() ?? "")).ToList();
+        matching = allRecords.Where(item => Matches(item, Search.Text ?? "")).ToList();
         branches = [];
         if (document is not null)
         {
@@ -215,7 +217,7 @@ public sealed partial class EditorWindow : Window
                 foreach (var child in next.Node.Children.Reverse()) pending.Push((child, branch));
             }
         }
-        IncludeMatches(!string.IsNullOrWhiteSpace(Search.Text)); ShowPage();
+        IncludeMatches(!string.IsNullOrEmpty(Search.Text)); ShowPage();
         UpdateControls();
     }
 
@@ -225,18 +227,29 @@ public sealed partial class EditorWindow : Window
     private async Task FilterAsync(CancellationToken token)
     {
         ApplyFields();
-        string text = Search.Text?.Trim() ?? "";
+        var scroll = Records.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
+        var offset = scroll?.Offset ?? default;
+        var selection = Records.SelectedItems?.OfType<RecordBranch>().ToArray() ?? [];
+        string text = Search.Text ?? "";
         active.Search = Search.Text ?? "";
         var results = await Task.Run(() => allRecords.Where(item => Matches(item, text)).ToList());
         if (token.IsCancellationRequested) return;
         matching = results;
         IncludeMatches(text.Length > 0); ShowPage();
+        var shown = visibleBranches;
+        if (scroll is not null)
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (ReferenceEquals(Records.ItemsSource, shown))
+                    scroll.Offset = selection.Any(shown.Contains) ? offset : default;
+            }, Avalonia.Threading.DispatcherPriority.Loaded);
         Status.Text = $"{matching.Count:N0} matching records; parent records remain visible.";
     }
 
     private void IncludeMatches(bool filtering)
     {
         var matches = matching.ToHashSet();
+        foreach (var branch in branches) branch.SetSearch(Search.Text ?? "", branch.Record is not null && matches.Contains(branch.Record));
         includedBranches = filtering ? branches.Where(branch => branch.Record is not null && matches.Contains(branch.Record)).ToHashSet() : branches.ToHashSet();
         for (int i = branches.Count - 1; i >= 0; i--)
         {
@@ -260,12 +273,19 @@ public sealed partial class EditorWindow : Window
 
     private void ShowPage()
     {
+        var primary = Records.SelectedItem as RecordBranch;
+        var selection = Records.SelectedItems?.OfType<RecordBranch>().ToArray() ?? [];
         changing = true; current = null; editors.Clear();
         RefreshVisibleBranches();
         Records.ItemsSource = visibleBranches;
-        Records.SelectedIndex = -1;
+        Records.SelectedItems?.Clear();
+        if (primary is not null && visibleBranches.Contains(primary)) Records.SelectedItems?.Add(primary);
+        foreach (var branch in selection.Where(visibleBranches.Contains))
+            if (Records.SelectedItems?.Contains(branch) != true) Records.SelectedItems?.Add(branch);
+        if (Records.SelectedItems?.Count == 0 && visibleBranches.Count > 0) Records.SelectedIndex = 0;
         changing = false;
-        if (visibleBranches.Count > 0) Records.SelectedIndex = 0;
+        current = (Records.SelectedItem as RecordBranch)?.Record;
+        BuildFields();
         UpdateControls();
     }
 
@@ -343,6 +363,7 @@ public sealed partial class EditorWindow : Window
             CfgField? descriptor = i < native.Count ? native[i] : null;
             Add(row.Values[i], i, [], name, descriptor, 0);
         }
+        foreach (var field in editors) field.SearchQuery = Search.Text ?? "";
         UpdateControls();
 
         string DisplayLabel(int root, int[] path, string fallback) => active.UseTags ? catalog.GetFieldLabel(document.Format, row.Name, row.Values.Count, string.Join(".", new[] { root }.Concat(path))) ?? fallback : fallback;
@@ -380,12 +401,24 @@ public sealed partial class EditorWindow : Window
             CfgValue root = changes.GetValueOrDefault(field.RootIndex, current.Row.Values[field.RootIndex]);
             changes[field.RootIndex] = ValueText.Replace(root, field.Path, 0, parsed);
         }
+        var checkpoint = changes.Count > 0 ? CaptureSnapshot() : null;
+        if (checkpoint is not null)
+        {
+            var preview = CfgTextCodec.Read(checkpoint.Text, catalog);
+            var row = current.ListName is null ? preview.Rows[current.ListIndex] : preview.GetList(current.ListName).Rows[current.ListIndex];
+            Assign(preview, row);
+        }
         ApplyLabels();
-        foreach (var change in changes)
-            if (document!.Format == BinaryFormat.T2b) document.SetT2bValue(current.Row, change.Key, change.Value);
-            else current.Row.SetValue(change.Key, change.Value);
-        if (changes.Count > 0) MarkDirty();
+        Assign(document!, current.Row);
+        if (checkpoint is not null) { active.History.Record(checkpoint); MarkDirty(); }
         BuildFields();
+
+        void Assign(CfgDocument target, CfgRow row)
+        {
+            foreach (var change in changes)
+                if (target.Format == BinaryFormat.T2b) target.SetT2bValue(row, change.Key, change.Value);
+                else row.SetValue(change.Key, change.Value);
+        }
     }
 
     private void MarkDirty() { dirty = true; UpdateTitle(); }
@@ -471,7 +504,11 @@ public sealed partial class EditorWindow : Window
     private async void WindowKeyDown(object? sender, KeyEventArgs args)
     {
         if (busy || (args.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Meta)) == 0) return;
-        if (args.Key == Key.S) { args.Handled = true; await RunAsync("Save", async () => { await SaveCurrentAsync(); }); }
+        if (args.Key == Key.F) { args.Handled = true; Search.Focus(); Search.SelectAll(); }
+        else if (args.Key == Key.Z && args.KeyModifiers.HasFlag(KeyModifiers.Shift) || args.Key == Key.Y)
+        { args.Handled = true; await RunAsync("Redo", RedoAsync); }
+        else if (args.Key == Key.Z) { args.Handled = true; await RunAsync("Undo", UndoAsync); }
+        else if (args.Key == Key.S) { args.Handled = true; await RunAsync("Save", async () => { await SaveCurrentAsync(); }); }
         else if (args.Key == Key.E && args.KeyModifiers.HasFlag(KeyModifiers.Shift)) { args.Handled = true; ExportBatchClicked(this, new RoutedEventArgs()); }
         else if (args.Key == Key.N) { args.Handled = true; await NewDocumentAsync(); }
         else if (args.Key == Key.O) { args.Handled = true; await PickFilesAsync(); }
@@ -480,6 +517,10 @@ public sealed partial class EditorWindow : Window
 
     private async void SearchKeyDown(object? sender, KeyEventArgs args)
     {
+        if (args.Key == Key.Escape)
+        {
+            args.Handled = true; Search.Text = ""; await SearchAsync(TimeSpan.Zero); return;
+        }
         if (args.Key != Key.Enter) return;
         args.Handled = true;
         await SearchAsync(TimeSpan.Zero);

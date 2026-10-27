@@ -11,7 +11,8 @@ internal sealed class EditorSession : INotifyPropertyChanged
     public StructureCatalog Catalog { get; set; }
     public string CatalogName { get; set; }
     public string SourcePath { get; set; } = "";
-    public bool Dirty { get; set; }
+    public DocumentHistory History { get; } = new();
+    public bool Dirty { get => History.IsDirty; set { if (value) History.MarkUnsaved(); else History.MarkSaved(); } }
     public bool UseTags { get; set; } = true;
     public string Search { get; set; } = "";
     public bool IsAuthoring { get; set; }

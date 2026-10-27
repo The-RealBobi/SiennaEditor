@@ -10,6 +10,14 @@ internal sealed class FieldEdit : INotifyPropertyChanged
     private string text;
     private string selectedKind;
     private bool isNull;
+    private string searchQuery = "";
+    public string SearchQuery
+    {
+        get => searchQuery;
+        set { if (searchQuery == value) return; searchQuery = value; Notify(nameof(IsSearchMatch), nameof(ValueDescription)); }
+    }
+    public bool IsSearchMatch => SearchQuery.Length > 0 && Text.Contains(SearchQuery, StringComparison.Ordinal);
+    public string ValueDescription => (IsSearchMatch ? "Matching value: " : "Value: ") + Label;
     public int RootIndex { get; }
     public IReadOnlyList<int> Path { get; }
     public CfgValue Original { get; }
@@ -19,7 +27,7 @@ internal sealed class FieldEdit : INotifyPropertyChanged
     public string Label
     {
         get => label;
-        set { if (label == value) return; label = value; Notify(nameof(Label)); changed(); }
+        set { if (label == value) return; label = value; Notify(nameof(Label), nameof(ValueDescription)); changed(); }
     }
     public bool IsLabelChanged => label != originalLabel;
     public bool CanEditLabel { get; }
@@ -39,14 +47,14 @@ internal sealed class FieldEdit : INotifyPropertyChanged
             if (selectedKind == value || !Kinds.Contains(value)) return;
             selectedKind = value; isNull = false;
             text = ValueText.Format(Template());
-            Notify(nameof(SelectedKind), nameof(Text), nameof(IsString), nameof(IsNull), nameof(CanEdit));
+            Notify(nameof(SelectedKind), nameof(Text), nameof(IsString), nameof(IsNull), nameof(CanEdit), nameof(IsSearchMatch), nameof(ValueDescription));
             changed();
         }
     }
     public string Text
     {
         get => text;
-        set { if (text == value) return; text = value; Notify(nameof(Text)); changed(); }
+        set { if (text == value) return; text = value; Notify(nameof(Text), nameof(IsSearchMatch), nameof(ValueDescription)); changed(); }
     }
     public bool IsNull
     {
@@ -65,7 +73,7 @@ internal sealed class FieldEdit : INotifyPropertyChanged
     public void Reset()
     {
         selectedKind = DisplayKind(Original.Kind); text = ValueText.Format(Original); isNull = Original.Kind == ValueKind.String && Original.Text is null;
-        Notify(nameof(SelectedKind), nameof(Text), nameof(IsString), nameof(IsNull), nameof(CanEdit)); changed();
+        Notify(nameof(SelectedKind), nameof(Text), nameof(IsString), nameof(IsNull), nameof(CanEdit), nameof(IsSearchMatch), nameof(ValueDescription)); changed();
     }
     public CfgValue Parse() => IsChanged ? ValueText.Parse(Template(), Width, text, isNull) : Original;
     private CfgValue Template()

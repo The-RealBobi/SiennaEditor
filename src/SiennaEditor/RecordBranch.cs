@@ -15,6 +15,18 @@ internal sealed class RecordBranch : INotifyPropertyChanged
     public int Depth { get; }
     public Thickness Indent => new(Depth * 16, 0, 0, 0);
     public string Heading { get; }
+    private string search = "";
+    private bool directMatch;
+    public Avalonia.Controls.Documents.InlineCollection HeadingParts => SearchHighlight.Create(Heading, search);
+    public double HeadingOpacity => search.Length > 0 && !directMatch ? 0.65 : 1;
+    public string SearchDescription => search.Length > 0 ? directMatch ? "Matching entry: " + Heading : "Context parent: " + Heading : Heading;
+    public void SetSearch(string query, bool matches)
+    {
+        search = query; directMatch = matches;
+        PropertyChanged?.Invoke(this, new(nameof(HeadingParts)));
+        PropertyChanged?.Invoke(this, new(nameof(HeadingOpacity)));
+        PropertyChanged?.Invoke(this, new(nameof(SearchDescription)));
+    }
     public string? ListName { get; }
     public string Key => Record is null ? "list:" + ListName : "row:" + Record.Ordinal;
     public string Toggle => expanded ? "▾" : "▸";

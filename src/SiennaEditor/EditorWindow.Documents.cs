@@ -17,7 +17,7 @@ public sealed partial class EditorWindow
         if (settingsWindow is not null) { settingsWindow.Activate(); return; }
         var dialog = new Window
         {
-            Title = "Settings", Width = 470, Height = 430, CanResize = false, WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Title = "Settings", Width = 570, Height = 540, CanResize = false, WindowStartupLocation = WindowStartupLocation.CenterOwner,
             Background = Background, Foreground = Foreground, FontFamily = FontFamily, FontSize = FontSize
         };
         settingsWindow = dialog;
@@ -30,26 +30,46 @@ public sealed partial class EditorWindow
             restoringTags = true; tags.IsChecked = active.UseTags; restoringTags = false;
         };
         var load = new Button { Content = "Add Structures…" };
+        var reload = new Button { Content = "Reload Structures" };
+        ToolTip.SetTip(reload, "Read Structure catalogs from data and apply them to every open file. Unsaved document edits are preserved; Undo and Redo history is cleared.");
+        var structure = new TextBlock { Text = ActiveStructureDescription(), TextWrapping = Avalonia.Media.TextWrapping.Wrap, Opacity = 0.7 };
         var schema = new Button { Content = "Inspect native schema…", IsEnabled = document is not null };
-        var settingsStatus = new TextBlock { TextWrapping = Avalonia.Media.TextWrapping.Wrap, Opacity = 0.7, FontSize = 12, MaxHeight = 50 };
+        var settingsStatus = new TextBlock { TextWrapping = Avalonia.Media.TextWrapping.Wrap, Opacity = 0.7, FontSize = 12, MaxHeight = 80 };
         var statusBinding = settingsStatus.Bind(TextBlock.TextProperty, Status.GetObservable(TextBlock.TextProperty));
         var close = new Button { Content = "Close", HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right };
+        Avalonia.Automation.AutomationProperties.SetAutomationId(reload, "reload-structures");
+        Avalonia.Automation.AutomationProperties.SetAutomationId(structure, "active-structure");
+        Avalonia.Automation.AutomationProperties.SetAutomationId(Profiles, "structure-profiles");
+        Avalonia.Automation.AutomationProperties.SetAutomationId(dialog, "settings");
         load.Click += (_, _) => { dialog.Close(); StructureClicked(this, new RoutedEventArgs()); };
         schema.Click += (_, _) => { dialog.Close(); SchemaClicked(this, new RoutedEventArgs()); };
         close.Click += (_, _) => dialog.Close();
-        dialog.Content = new StackPanel
+        var content = new StackPanel
         {
             Margin = new Avalonia.Thickness(22), Spacing = 14, Children =
             {
                 new TextBlock { Text = "Tags and field names", FontWeight = Avalonia.Media.FontWeight.SemiBold, FontSize = 16 },
-                new TextBlock { Text = catalogName, Opacity = 0.7 },
-                tags, Profiles,
-                new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 10, Children = { load, schema } },
-                settingsStatus, close
+                structure, tags, Profiles,
+                new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 10, Children = { load, reload } },
+                schema, settingsStatus, close
             }
         };
+        reload.Click += async (_, _) =>
+        {
+            await RunAsync("Reload Structures", ReloadStructuresAsync, [Workspace, content]);
+            structure.Text = ActiveStructureDescription();
+        };
+        void UpdateStructureDescription(object? source, SelectionChangedEventArgs change)
+        {
+            structure.Text = Profiles.SelectedItem is StructureChoice choice
+                ? "Catalog: " + choice.File.Path + "\nProfile: " + (choice.Catalog.ProfileName ?? "Custom")
+                : ActiveStructureDescription();
+        }
+        Profiles.SelectionChanged += UpdateStructureDescription;
+        dialog.Content = content;
         dialog.Closed += (_, _) =>
         {
+            Profiles.SelectionChanged -= UpdateStructureDescription;
             statusBinding.Dispose();
             if (Profiles.Parent is Panel panel) panel.Children.Remove(Profiles);
             dialog.Content = null; settingsWindow = null;
@@ -139,6 +159,8 @@ public sealed partial class EditorWindow
         TypeHeader.IsVisible = active.IsAuthoring;
         RootAdd.IsEnabled = document?.Format == BinaryFormat.T2b;
         AddValue.IsEnabled = document?.Format == BinaryFormat.T2b && current is not null && current.Row.Values.Count < 255;
+        UndoAction.IsEnabled = document is not null && (active.History.Undo is not null || editors.Any(field => field.IsChanged));
+        RedoAction.IsEnabled = active.History.Redo is not null && !editors.Any(field => field.IsChanged);
         changing = previous;
     }
 

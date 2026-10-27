@@ -85,6 +85,12 @@ public sealed partial class EditorWindow
         var useIncoming = new Button { Content = "Use File 2 for all", IsEnabled = false };
         var removeSelected = new Button { Content = "Remove selected", IsEnabled = false };
         AutomationProperties.SetAutomationId(removeSelected, "merge-remove-selected");
+        var search = new TextBox { PlaceholderText = "Search entries and values", MinWidth = 240 };
+        ToolTip.SetTip(search, "Literal search. Case-sensitive; spaces are significant.");
+        AutomationProperties.SetAutomationId(search, "merge-search");
+        AutomationProperties.SetName(search, "Search merge entries and values");
+        var unresolvedOnly = new CheckBox { Content = "Unresolved conflicts only", VerticalAlignment = VerticalAlignment.Center };
+        AutomationProperties.SetAutomationId(unresolvedOnly, "merge-unresolved-only");
         var conflictBrush = new SolidColorBrush(Color.Parse("#E7C55B"));
         var additionBrush = new SolidColorBrush(Color.Parse("#75C998"));
         var changeTree = new ListBox { SelectionMode = SelectionMode.Multiple };
@@ -102,7 +108,10 @@ public sealed partial class EditorWindow
         var excludedEntries = new HashSet<MergeEntry>(ReferenceEqualityComparer.Instance);
         var excludedConflicts = new HashSet<int>();
         CfgDocument? currentFile = null, incomingFile = null; CfgMergePlan? plan = null;
-        bool working = false, settingAll = false, compatible = false;
+        bool working = false, settingAll = false, compatible = false, refreshingTree = false;
+        var expansionBeforeFilter = new Dictionary<MergeTreeRow, bool>();
+        var fieldsByRow = new Dictionary<MergeTreeRow, MergeFieldRow[]>();
+        bool IsFiltering() => !string.IsNullOrEmpty(search.Text) || unresolvedOnly.IsChecked == true;
         IEnumerable<MergeDecision> ActiveDecisions() => decisions.Where(item => !excludedConflicts.Contains(item.Conflict.Id));
         void UpdateDecisions()
         {
@@ -112,12 +121,13 @@ public sealed partial class EditorWindow
             summary.Text = $"{plan.MatchedRows:N0} matched · {plan.AddedRows:N0} File 2 only · {plan.CurrentOnlyRows:N0} File 1 only rows. {resolved:N0} / {activeDecisions.Length:N0} conflicts resolved. {excludedEntries.Count:N0} entries removed from result.";
             create.IsEnabled = !working && resolved == activeDecisions.Length;
             removeSelected.IsEnabled = !working && changeTree.SelectedItems?.Count > 0;
+            if (unresolvedOnly.IsChecked == true) RefreshTree(null);
         }
         void ClearAnalysis()
         {
             plan = null; decisions.Clear(); decisionsById.Clear(); conflictList.ItemsSource = null;
             excludedEntries.Clear(); excludedConflicts.Clear(); removeSelected.IsEnabled = false;
-            treeRows.Clear(); changeTree.ItemsSource = null; detailsTitle.Text = "Select an entry to inspect its fields.";
+            expansionBeforeFilter.Clear(); fieldsByRow.Clear(); treeRows.Clear(); changeTree.ItemsSource = null; detailsTitle.Text = "Select an entry to inspect its fields.";
             create.IsEnabled = false; useCurrent.IsEnabled = false; useIncoming.IsEnabled = false;
         }
         void SetWorking(bool value)
@@ -128,16 +138,41 @@ public sealed partial class EditorWindow
             useCurrent.IsEnabled = !value && ActiveDecisions().Any(); useIncoming.IsEnabled = !value && ActiveDecisions().Any();
             removeSelected.IsEnabled = !value && plan is not null && changeTree.SelectedItems?.Count > 0;
             conflictList.IsEnabled = !value;
-            changeTree.IsEnabled = !value;
+            changeTree.IsEnabled = !value; search.IsEnabled = !value; unresolvedOnly.IsEnabled = !value;
         }
+        IEnumerable<MergeFieldRow> Fields(MergeTreeRow row) => fieldsByRow[row].Where(item => item.Field.ConflictId is not int id || !excludedConflicts.Contains(id));
+        string DisplayValue(MergeFieldRow item, MergeSide side)
+        {
+            var value = side == MergeSide.Current ? item.Field.File1 : item.Field.File2;
+            var target = side == MergeSide.Current ? item.Decision?.Conflict.CurrentTarget : item.Decision?.Conflict.IncomingTarget;
+            return value is null ? "—" : MergeValueText(value) + (target is null ? "" : Environment.NewLine + "Target: " + MergeValueText(target));
+        }
+        bool MatchesText(string value) => value.Contains(search.Text ?? "", StringComparison.Ordinal);
+        bool MatchesEntry(MergeTreeRow row) => MatchesText(row.Entry.Name) || MatchesText(row.Entry.Label);
+        bool MatchesField(MergeFieldRow item) => MatchesText(item.Field.Name)
+            || MatchesText(DisplayValue(item, MergeSide.Current)) || MatchesText(DisplayValue(item, MergeSide.Incoming));
+        bool IsUnresolved(MergeFieldRow item) => item.Decision is { Choice: null } decision && !excludedConflicts.Contains(decision.Conflict.Id);
         void ShowFields(MergeTreeRow row)
         {
             detailsTitle.Text = row.Entry.Label;
             ToolTip.SetTip(detailsTitle, row.Entry.Location);
-            var fields = row.Entry.Fields.Select(field => (Field: field, row.Entry.State))
-                .Concat(treeRows.Where(child => child.Parent == row && child.Entry.IsClosing && !excludedEntries.Contains(child.Entry)).SelectMany(child => child.Entry.Fields.Select(field => (Field: field with { Name = "End / " + field.Name }, child.Entry.State))));
-            conflictList.ItemsSource = fields.Select(item => new MergeFieldRow(item.Field, item.State,
-                item.Field.ConflictId is int id ? decisionsById[id] : null)).ToArray();
+            conflictList.ItemsSource = Fields(row).Where(item => (unresolvedOnly.IsChecked != true || IsUnresolved(item))
+                && (MatchesEntry(row) || MatchesField(item))).ToArray();
+        }
+        HashSet<MergeTreeRow> FilteredRows()
+        {
+            var included = new HashSet<MergeTreeRow>();
+            foreach (var row in treeRows.Where(row => row.HasChanges && !row.Entry.IsClosing && !excludedEntries.Contains(row.Entry)))
+            {
+                bool entryMatches = MatchesEntry(row);
+                bool matches = unresolvedOnly.IsChecked == true
+                    ? Fields(row).Any(item => IsUnresolved(item) && (entryMatches || MatchesField(item)))
+                    : entryMatches || Fields(row).Any(MatchesField);
+                if (!matches) continue;
+                for (MergeTreeRow? ancestor = row; ancestor is not null; ancestor = ancestor.Parent)
+                    if (!included.Add(ancestor)) break;
+            }
+            return included;
         }
         void RefreshTree(MergeTreeRow? selected)
         {
@@ -149,16 +184,50 @@ public sealed partial class EditorWindow
             }
             foreach (var row in treeRows.AsEnumerable().Reverse().Where(row => !excludedEntries.Contains(row.Entry)))
                 if (row.Parent is { } parent) { parent.HasConflicts |= row.HasConflicts; parent.HasAdditions |= row.HasAdditions; }
-            var parentsWithChildren = treeRows.Where(row => row.HasChanges && !row.Entry.IsClosing && !excludedEntries.Contains(row.Entry)).Select(row => row.Parent).ToHashSet();
+            var included = FilteredRows();
+            var parentsWithChildren = included.Select(row => row.Parent).ToHashSet();
             foreach (var row in treeRows) row.HasChildren = parentsWithChildren.Contains(row);
             var shown = new HashSet<MergeTreeRow>(); var visible = new List<MergeTreeRow>();
             foreach (var row in treeRows)
-                if (row.HasChanges && !row.Entry.IsClosing && !excludedEntries.Contains(row.Entry) && (row.Parent is null || shown.Contains(row.Parent) && row.Parent.IsExpanded))
+                if (included.Contains(row) && !excludedEntries.Contains(row.Entry) && (row.Parent is null || shown.Contains(row.Parent) && row.Parent.IsExpanded))
                 { shown.Add(row); visible.Add(row); }
-            changeTree.ItemsSource = visible;
-            foreach (var row in selection.Where(visible.Contains)) changeTree.SelectedItems?.Add(row);
-            if (selected is not null && visible.Contains(selected) && changeTree.SelectedItems?.Contains(selected) != true) changeTree.SelectedItems?.Add(selected);
+            refreshingTree = true;
+            try
+            {
+                changeTree.ItemsSource = visible;
+                foreach (var row in selection.Where(visible.Contains))
+                    if (changeTree.SelectedItems?.Contains(row) != true) changeTree.SelectedItems?.Add(row);
+                if (selected is not null && visible.Contains(selected) && changeTree.SelectedItems?.Contains(selected) != true) changeTree.SelectedItems?.Add(selected);
+            }
+            finally { refreshingTree = false; }
+            if (changeTree.SelectedItem is MergeTreeRow current) ShowFields(current);
+            else
+            {
+                conflictList.ItemsSource = null;
+                detailsTitle.Text = visible.Count == 0 ? "No entries match the filters." : "Select an entry to inspect its fields.";
+            }
+            removeSelected.IsEnabled = !working && plan is not null && changeTree.SelectedItems?.Count > 0;
         }
+        void FiltersChanged()
+        {
+            if (plan is null) return;
+            if (IsFiltering())
+            {
+                if (expansionBeforeFilter.Count == 0)
+                {
+                    foreach (var row in treeRows) expansionBeforeFilter.Add(row, row.IsExpanded);
+                }
+                foreach (var row in FilteredRows()) if (row.Parent is { } parent) parent.IsExpanded = true;
+            }
+            else
+            {
+                foreach (var item in expansionBeforeFilter) item.Key.IsExpanded = item.Value;
+                expansionBeforeFilter.Clear();
+            }
+            RefreshTree(null);
+        }
+        search.TextChanged += (_, _) => FiltersChanged();
+        unresolvedOnly.IsCheckedChanged += (_, _) => FiltersChanged();
         void BuildTree()
         {
             treeRows.Clear();
@@ -171,6 +240,13 @@ public sealed partial class EditorWindow
                 var row = new MergeTreeRow(item.Entry, parent); treeRows.Add(row);
                 foreach (var child in item.Entry.Children.Reverse()) pending.Push((child, row));
             }
+            var children = treeRows.ToLookup(row => row.Parent);
+            fieldsByRow.Clear();
+            foreach (var row in treeRows)
+                fieldsByRow.Add(row, row.Entry.Fields.Select(field => (Field: field, row.Entry.State))
+                    .Concat(children[row].Where(child => child.Entry.IsClosing).SelectMany(child => child.Entry.Fields
+                        .Select(field => (Field: field with { Name = "End / " + field.Name }, child.Entry.State))))
+                    .Select(item => new MergeFieldRow(item.Field, item.State, item.Field.ConflictId is int id ? decisionsById[id] : null)).ToArray());
             foreach (var row in treeRows.AsEnumerable().Reverse())
                 if (row.Parent is { } parent)
                 {
@@ -181,8 +257,9 @@ public sealed partial class EditorWindow
                 ?? treeRows.FirstOrDefault(row => row.HasChanges && !row.Entry.IsClosing);
             for (var parent = selected?.Parent; parent is not null; parent = parent.Parent) parent.IsExpanded = true;
             RefreshTree(selected);
-            if (selected is not null) { ShowFields(selected); changeTree.ScrollIntoView(selected); }
-            else detailsTitle.Text = "The files have no changes.";
+            if (IsFiltering()) FiltersChanged();
+            if (changeTree.SelectedItem is MergeTreeRow current) changeTree.ScrollIntoView(current);
+            else if (selected is null && !IsFiltering()) detailsTitle.Text = "The files have no changes.";
         }
         async Task RemoveSelectedAsync()
         {
@@ -214,6 +291,7 @@ public sealed partial class EditorWindow
         };
         changeTree.SelectionChanged += (_, _) =>
         {
+            if (refreshingTree) return;
             if (plan is not null && changeTree.SelectedItem is MergeTreeRow row) ShowFields(row);
             removeSelected.IsEnabled = !working && plan is not null && changeTree.SelectedItems?.Count > 0;
         };
@@ -226,7 +304,7 @@ public sealed partial class EditorWindow
             if (e.Key == Avalonia.Input.Key.Right)
             {
                 if (row.HasChildren && !row.IsExpanded) { row.IsExpanded = true; RefreshTree(row); }
-                else if (treeRows.FirstOrDefault(child => child.Parent == row && child.HasChanges && !child.Entry.IsClosing) is { } child) changeTree.SelectedItem = child;
+                else if (changeTree.ItemsSource?.Cast<MergeTreeRow>().FirstOrDefault(child => child.Parent == row) is { } child) changeTree.SelectedItem = child;
             }
             else if (row.HasChildren && row.IsExpanded) { row.IsExpanded = false; RefreshTree(row); }
             else if (row.Parent is not null) changeTree.SelectedItem = row.Parent;
@@ -298,8 +376,8 @@ public sealed partial class EditorWindow
                 Foreground = item.Decision is not null ? conflictBrush : item.State is MergeEntryState.File1Only or MergeEntryState.File2Only ? additionBrush : Foreground,
                 TextDecorations = item.Decision is not null ? TextDecorations.Underline : null };
             ToolTip.SetTip(label, item.Field.Name); row.Children.Add(label);
-            var currentValue = new TextBox { Text = item.Field.File1 is { } left ? MergeValueText(left) + (item.Decision?.Conflict.CurrentTarget is { } a ? Environment.NewLine + "Target: " + MergeValueText(a) : "") : "—", IsReadOnly = true, MaxHeight = 72, TextWrapping = TextWrapping.Wrap };
-            var incomingValue = new TextBox { Text = item.Field.File2 is { } right ? MergeValueText(right) + (item.Decision?.Conflict.IncomingTarget is { } b ? Environment.NewLine + "Target: " + MergeValueText(b) : "") : "—", IsReadOnly = true, MaxHeight = 72, TextWrapping = TextWrapping.Wrap };
+            var currentValue = new TextBox { Text = DisplayValue(item, MergeSide.Current), IsReadOnly = true, MaxHeight = 72, TextWrapping = TextWrapping.Wrap };
+            var incomingValue = new TextBox { Text = DisplayValue(item, MergeSide.Incoming), IsReadOnly = true, MaxHeight = 72, TextWrapping = TextWrapping.Wrap };
             Grid.SetColumn(currentValue, 1); row.Children.Add(currentValue); Grid.SetColumn(incomingValue, 2); row.Children.Add(incomingValue);
             Control resolution;
             if (item.Decision is { } decision)
@@ -344,8 +422,10 @@ public sealed partial class EditorWindow
         var comparison = new Grid { ColumnDefinitions = new ColumnDefinitions("310,6,*"), ColumnSpacing = 8 };
         comparison.Children.Add(treePane); var splitter = new GridSplitter { HorizontalAlignment = HorizontalAlignment.Stretch, ResizeDirection = GridResizeDirection.Columns };
         Grid.SetColumn(splitter, 1); comparison.Children.Add(splitter); Grid.SetColumn(detailsPane, 2); comparison.Children.Add(detailsPane);
-        var body = new Grid { Margin = new Thickness(20), RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*,Auto"), RowSpacing = 12 };
-        Control[] sections = [inputRows, actions, summary, comparison, footer];
+        var filters = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 16 };
+        filters.Children.Add(search); Grid.SetColumn(unresolvedOnly, 1); filters.Children.Add(unresolvedOnly);
+        var body = new Grid { Margin = new Thickness(20), RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,*,Auto"), RowSpacing = 12 };
+        Control[] sections = [inputRows, actions, summary, filters, comparison, footer];
         for (int i = 0; i < sections.Length; i++) { Grid.SetRow(sections[i], i); body.Children.Add(sections[i]); }
         dialog.Content = body;
         var result = await dialog.ShowDialog<CfgDocument?>(this);

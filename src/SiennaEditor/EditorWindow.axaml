@@ -12,6 +12,7 @@
     <SolidColorBrush x:Key="SelectedBrush">#2C5552</SolidColorBrush>
     <SolidColorBrush x:Key="LineBrush">#39414B</SolidColorBrush>
     <SolidColorBrush x:Key="MutedBrush">#A4AFBB</SolidColorBrush>
+    <SolidColorBrush x:Key="SearchMatchBrush">#E7C55B</SolidColorBrush>
   </Window.Resources>
   <Window.Styles>
     <Style Selector="Button">
@@ -28,6 +29,10 @@
     <Style Selector="ComboBox">
       <Setter Property="MinHeight" Value="28" /><Setter Property="Padding" Value="6,3" />
       <Setter Property="CornerRadius" Value="3" /><Setter Property="Background" Value="{DynamicResource ValueBrush}" />
+    </Style>
+    <Style Selector="TextBox.search-match">
+      <Setter Property="BorderBrush" Value="{DynamicResource SearchMatchBrush}" />
+      <Setter Property="BorderThickness" Value="2" />
     </Style>
     <Style Selector="ListBoxItem">
       <Setter Property="MinHeight" Value="25" /><Setter Property="Padding" Value="5,2" /><Setter Property="CornerRadius" Value="3" />
@@ -50,6 +55,10 @@
         <Separator />
         <MenuItem Header="Close tab" Click="CloseActiveClicked" InputGesture="Ctrl+W" />
         <MenuItem Header="Exit" Click="ExitClicked" />
+      </MenuItem>
+      <MenuItem Header="Edit">
+        <MenuItem x:Name="UndoAction" Header="Undo" Click="UndoClicked" InputGesture="Ctrl+Z" AutomationProperties.AutomationId="undo-document" />
+        <MenuItem x:Name="RedoAction" Header="Redo" Click="RedoClicked" InputGesture="Ctrl+Shift+Z" AutomationProperties.AutomationId="redo-document" />
       </MenuItem>
       <MenuItem Header="Settings" Click="SettingsClicked" />
       <MenuItem Header="Tools">
@@ -85,7 +94,7 @@
           <TextBlock Grid.Column="1" x:Name="RecordsCount" Foreground="{DynamicResource MutedBrush}" />
         </Grid>
         <Grid Grid.Row="1" ColumnDefinitions="*,36" Margin="0,0,0,7">
-          <TextBox x:Name="Search" PlaceholderText="Search entries and values" TextChanged="SearchChanged" KeyDown="SearchKeyDown" AutomationProperties.AutomationId="search-records" />
+          <TextBox x:Name="Search" PlaceholderText="Search entries and values" ToolTip.Tip="Literal search. Case-sensitive; spaces are significant." TextChanged="SearchChanged" KeyDown="SearchKeyDown" AutomationProperties.AutomationId="search-records" />
           <Button Grid.Column="1" x:Name="RootAdd" HorizontalAlignment="Stretch" Content="+" FontSize="20" Padding="0" Margin="5,0,0,0" Click="AddRootClicked" ToolTip.Tip="Add root entry" AutomationProperties.AutomationId="add-root" AutomationProperties.Name="Add root entry" />
         </Grid>
         <ListBox Grid.Row="3" x:Name="Records" Background="{DynamicResource ValueBrush}" BorderThickness="0"
@@ -105,7 +114,7 @@
               <Grid ColumnDefinitions="17,*" Margin="{Binding Indent}" MinHeight="23" ToolTip.Tip="{Binding Heading}">
                 <Button Content="{Binding Toggle}" IsVisible="{Binding HasChildren}" Click="ToggleClicked" Width="17" MinHeight="23"
                         Padding="0" Background="Transparent" AutomationProperties.Name="{Binding ToggleName}" />
-                <TextBlock Grid.Column="1" Text="{Binding Heading}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="1" Inlines="{Binding HeadingParts}" Opacity="{Binding HeadingOpacity}" AutomationProperties.Name="{Binding SearchDescription}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
               </Grid>
             </DataTemplate>
           </ListBox.ItemTemplate>
@@ -131,7 +140,7 @@
                   <Grid.ContextMenu><ContextMenu><MenuItem Header="Restore value" Click="RestoreFieldClicked" /><MenuItem Header="Toggle null string" IsEnabled="{Binding IsString}" Click="NullFieldClicked" /><MenuItem Header="Remove value" IsEnabled="{Binding CanRemove}" Click="RemoveValueClicked" /></ContextMenu></Grid.ContextMenu>
                   <ComboBox Margin="0,0,6,0" ItemsSource="{Binding Kinds}" SelectedItem="{Binding SelectedKind,Mode=TwoWay}" IsVisible="{Binding CanChangeKind}" AutomationProperties.Name="Value type" />
                   <TextBox Grid.Column="1" Margin="6,0" Text="{Binding Label,Mode=TwoWay}" IsEnabled="{Binding CanEditLabel}" LostFocus="FieldNameLostFocus" ToolTip.Tip="Field names are saved automatically" AutomationProperties.Name="Field name" />
-                  <TextBox Grid.Column="2" Margin="6,0,0,0" Text="{Binding Text,Mode=TwoWay}" IsEnabled="{Binding CanEdit}" AcceptsReturn="{Binding IsString}"
+                  <TextBox Grid.Column="2" Margin="6,0,0,0" Text="{Binding Text,Mode=TwoWay}" Classes.search-match="{Binding IsSearchMatch}" AutomationProperties.Name="{Binding ValueDescription}" IsEnabled="{Binding CanEdit}" AcceptsReturn="{Binding IsString}"
                            MaxHeight="90" TextWrapping="NoWrap" FontFamily="SF Mono,Cascadia Mono,Consolas,monospace" FontSize="12" />
                 </Grid>
               </DataTemplate>

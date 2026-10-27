@@ -20,7 +20,7 @@ internal static class ValueText
         _ => $"{value.Kind} [{value.Items.Count}]"
     };
 
-    public static bool Contains(CfgValue value, string text) => Format(value).Contains(text, StringComparison.OrdinalIgnoreCase)
+    public static bool Contains(CfgValue value, string text) => Format(value).Contains(text, StringComparison.Ordinal)
         || value.Items.Any(child => Contains(child, text));
 
     public static CfgValue Parse(CfgValue original, int width, string text, bool isNull)

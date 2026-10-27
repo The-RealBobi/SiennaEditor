@@ -10,7 +10,7 @@ namespace SiennaEditor;
 public sealed partial class EditorWindow
 {
     private CancellationTokenSource? searchDelay;
-    private static bool Matches(RecordChoice item, string text) => (text.Length == 0 || item.Row.Name.Contains(text, StringComparison.OrdinalIgnoreCase) || item.Row.Values.Any(value => ValueText.Contains(value, text)));
+    private static bool Matches(RecordChoice item, string text) => (text.Length == 0 || item.Row.Name.Contains(text, StringComparison.Ordinal) || item.Row.Values.Any(value => ValueText.Contains(value, text)));
 
     private async void SearchChanged(object? sender, TextChangedEventArgs args)
     {
@@ -32,7 +32,7 @@ public sealed partial class EditorWindow
         }
         catch (OperationCanceledException) { }
     }
-    private void FieldChanged() => UpdateTitle();
+    private void FieldChanged() { UpdateTitle(); UpdateControls(); }
     private void NullFieldClicked(object? sender, RoutedEventArgs args)
     {
         if (sender is MenuItem { DataContext: FieldEdit field } && field.IsString) field.IsNull = !field.IsNull;
@@ -90,6 +90,7 @@ public sealed partial class EditorWindow
     {
         if (document is null) throw new InvalidOperationException("Open a file first.");
         ApplyFields();
+        var checkpoint = CaptureSnapshot();
         CfgDocument rebuilt = await Task.Run(() =>
         {
             var copy = CfgTextCodec.Read(CfgTextCodec.Write(document), catalog);
@@ -98,6 +99,7 @@ public sealed partial class EditorWindow
             _ = result.GetRecordTree();
             return result;
         });
+        active.History.Record(checkpoint);
         document = rebuilt; MarkDirty(); RebuildRecords();
         FocusOrdinal(Math.Min(focusOrdinal, allRecords.Count - 1));
         Status.Text = message;

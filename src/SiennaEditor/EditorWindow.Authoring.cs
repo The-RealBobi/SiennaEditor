@@ -7,6 +7,7 @@ public sealed partial class EditorWindow
     private async Task MoveAuthoredEntryAsync(int start, int count, int destination, int parentOrdinal)
     {
         ApplyFields();
+        var checkpoint = CaptureSnapshot();
         var original = document!;
         var oldPositions = original.Rows.Select((row, index) => (row, index)).ToDictionary(item => item.row, item => item.index);
         var originalParents = RowParents(original);
@@ -61,6 +62,7 @@ public sealed partial class EditorWindow
             SaveCatalogText(file, text); catalog.SetChildRules(candidate.Children);
             active.AuthoredChildren.IntersectWith(candidate.Children); active.AuthoredChildren.UnionWith(addedRules);
         }
+        active.History.Record(checkpoint);
         document = BinCodec.Read(bytes, catalog); MarkDirty(); RebuildRecords();
         FocusOrdinal(destination > start + count ? destination - count : start > destination ? destination : start);
         Status.Text = changedRules ? "Branch moved. Child relationships saved to the Structure." : "Branch moved; counts and references recalculated.";
