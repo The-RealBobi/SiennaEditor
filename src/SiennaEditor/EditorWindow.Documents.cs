@@ -169,7 +169,8 @@ public sealed partial class EditorWindow
         if (document is null) throw new InvalidOperationException("Open a file before saving.");
         ApplyFields(); int ordinal = current?.Ordinal ?? -1;
         CheckDestination(path, cfg);
-        byte[] bytes = await Task.Run(() => cfg ? Encoding.UTF8.GetBytes(CfgTextCodec.WriteReadable(document)) : BinCodec.Write(document));
+        byte[] bytes = await Task.Run(() => cfg ? Encoding.UTF8.GetBytes(CfgTextCodec.WriteReadable(document) + $"\n// {ExportProvenance.Identifier}\n") : BinCodec.Write(document));
+        if (!cfg) ExportProvenance.MarkT2b(bytes);
         CfgDocument saved = await Task.Run(() => cfg ? CfgTextCodec.Read(Encoding.UTF8.GetString(bytes), catalog) : BinCodec.Read(bytes, catalog));
         _ = saved.GetRecordTree();
         await Task.Run(() => AtomicWrite(path, bytes));
