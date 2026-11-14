@@ -2,7 +2,7 @@
 
 ## v1.1.2
 
-- Hid the horizontal scrollbar in long field values while keeping text navigation available.
+- Shortened the time the horizontal scrollbar stays expanded after use in long field values.
 - Simplified Structure settings and renamed the import button to Import Structure.
 - Moved file labels next to their paths in Conflict Merge and removed redundant prompts.
 - Shortened search labels and removed the entries counter, Fields heading and routine status messages.
