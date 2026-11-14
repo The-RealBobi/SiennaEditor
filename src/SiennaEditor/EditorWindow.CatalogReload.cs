@@ -5,12 +5,6 @@ namespace SiennaEditor;
 
 public sealed partial class EditorWindow
 {
-    private string ActiveStructureDescription()
-    {
-        var file = structureFiles.FirstOrDefault(file => ReferenceEquals(file.Root, catalogRoot));
-        return "Catalog: " + (file?.Path ?? "Unavailable") + "\nProfile: " + (catalog.ProfileName ?? "Custom");
-    }
-
     private async Task ReloadStructuresAsync()
     {
         if (editors.Any(field => field.IsLabelChanged))
@@ -47,7 +41,7 @@ public sealed partial class EditorWindow
             {
                 var choice = choices.SingleOrDefault(choice => string.Equals(choice.File.Path, original.File.Path, comparison)
                     && string.Equals(choice.Catalog.ProfileName, original.Session.Catalog.ProfileName, StringComparison.Ordinal))
-                    ?? throw new InvalidDataException("The Structure catalog or profile used by " + original.Session.Title + " is missing: " + original.File.Path + " — " + (original.Session.Catalog.ProfileName ?? "Custom") + ".");
+                    ?? throw new InvalidDataException("The Structure catalog or profile used by " + original.Session.Title + " is missing: " + original.File.Path + " - " + (original.Session.Catalog.ProfileName ?? "Custom") + ".");
                 CfgDocument? rebound = original.Text is null ? null : CfgTextCodec.Read(original.Text, choice.Catalog);
                 if (rebound is not null)
                 {
@@ -86,6 +80,5 @@ public sealed partial class EditorWindow
         SetProfiles(); RebuildRecords();
         foreach (var branch in branches) branch.IsExpanded = active.Expanded.Contains(branch.Key);
         IncludeMatches(active.Search.Length > 0); ShowPage(); FocusOrdinal(active.SelectedOrdinal);
-        Status.Text = $"Reloaded {replacement.Files.Count} Structure catalog(s) for {openSessions.Length} session(s). Unsaved edits preserved. Undo and Redo history cleared.";
     }
 }

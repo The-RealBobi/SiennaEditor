@@ -1,7 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Text;
-using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -52,7 +51,7 @@ public sealed partial class EditorWindow : Window
         AddContext.AddHandler(PointerPressedEvent, AddContextPressed, RoutingStrategies.Tunnel);
         AddContext.AddHandler(KeyDownEvent, AddContextKeyDown, RoutingStrategies.Tunnel);
         SetProfiles(); RebuildRecords(); UpdateControls();
-        Status.Text = catalogLoadErrors.Length == 0 ? "Add an entry to start, or open a file." : "Some Structures were not loaded: " + catalogLoadErrors;
+        Status.Text = catalogLoadErrors.Length == 0 ? "" : "Some Structures were not loaded: " + catalogLoadErrors;
         changing = false;
         Closed += (_, _) => { searchDelay?.Cancel(); searchDelay?.Dispose(); };
         Closing += ClosingWindow;
@@ -69,7 +68,7 @@ public sealed partial class EditorWindow : Window
         if (busy) return false;
         busy = true;
         foreach (var control in controls) control.IsEnabled = false;
-        Status.Text = operation + "…";
+        Status.Text = "";
         try { await action(); return true; }
         catch (Exception error) { Status.Text = $"{operation} failed: {error.Message}"; return false; }
         finally
@@ -84,11 +83,10 @@ public sealed partial class EditorWindow : Window
         ApplyFields();
         var fullPath = Path.GetFullPath(path);
         var existing = sessions.FirstOrDefault(session => string.Equals(session.SourcePath, fullPath, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal));
-        if (existing is not null) { ActivateSession(existing); Status.Text = "Already open: " + Path.GetFileName(fullPath); return; }
+        if (existing is not null) { ActivateSession(existing); return; }
         var opened = await Task.Run(() => DocumentFiles.Read(path, catalog));
         var session = new EditorSession(catalogRoot, catalog, catalogName) { Document = opened, SourcePath = fullPath };
         sessions.Add(session); ActivateSession(session);
-        Status.Text = "Opened " + Path.GetFileName(sourcePath);
     });
 
     private async void OpenClicked(object? sender, RoutedEventArgs args) => await PickFilesAsync();
@@ -143,11 +141,11 @@ public sealed partial class EditorWindow : Window
     {
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Add Structures to data", AllowMultiple = true,
+            Title = "Import Structure", AllowMultiple = true,
             FileTypeFilter = [new FilePickerFileType("Structure catalogs") { Patterns = ["*.cfg"] }]
         });
         if (files.Count == 0) return;
-        await RunAsync("Add Structures", async () =>
+        await RunAsync("Import Structure", async () =>
         {
             ApplyFields();
             foreach (var selectedFile in files)
@@ -158,7 +156,7 @@ public sealed partial class EditorWindow : Window
                 for (int number = 2; File.Exists(target); number++) target = Path.Combine(dataDirectory, name + "-" + number.ToString(CultureInfo.InvariantCulture) + ".cfg");
                 AtomicWrite(target, Encoding.UTF8.GetBytes(text)); RegisterStructure(target);
             }
-            SetProfiles(); Status.Text = "Structures added to data. Choose a catalog and game in Settings.";
+            SetProfiles();
         });
     }
 
@@ -176,7 +174,7 @@ public sealed partial class EditorWindow : Window
                 catalogRoot = choice.File.Root; catalog = selected; catalogName = Path.GetFileName(choice.File.Path);
                 active.AuthoredChildren.Clear();
                 ClearHistoryForCatalogChange(active);
-                document = relabeled; RebuildRecords(); Status.Text = "Structure: " + choice;
+                document = relabeled; RebuildRecords();
             }
             finally { SetProfiles(); }
         });
@@ -243,7 +241,6 @@ public sealed partial class EditorWindow : Window
                 if (ReferenceEquals(Records.ItemsSource, shown))
                     scroll.Offset = selection.Any(shown.Contains) ? offset : default;
             }, Avalonia.Threading.DispatcherPriority.Loaded);
-        Status.Text = $"{matching.Count:N0} matching records; parent records remain visible.";
     }
 
     private void IncludeMatches(bool filtering)
@@ -306,7 +303,7 @@ public sealed partial class EditorWindow : Window
     {
         args.Handled = true;
         if (sender is Button { DataContext: RecordBranch branch })
-            await RunAsync("Toggle records", () => { ToggleBranch(branch); Status.Text = "Ready"; return Task.CompletedTask; });
+            await RunAsync("Toggle records", () => { ToggleBranch(branch); return Task.CompletedTask; });
     }
 
     private async void TreeKeyDown(object? sender, KeyEventArgs args)
@@ -329,7 +326,7 @@ public sealed partial class EditorWindow : Window
             }
             else if (branch.HasChildren && branch.IsExpanded) ToggleBranch(branch);
             else if (branch.Parent is not null) FocusBranch(branch.Parent);
-            Status.Text = "Ready"; return Task.CompletedTask;
+            return Task.CompletedTask;
         });
     }
 
@@ -425,7 +422,7 @@ public sealed partial class EditorWindow : Window
     private void UpdateTitle()
     {
         active.Title = (HasChanges ? "* " : "") + (sourcePath.Length == 0 ? "Untitled" : Path.GetFileName(sourcePath));
-        Title = document is null ? "Sienna Editor" : active.Title + " — Sienna Editor";
+        Title = document is null ? "Sienna Editor" : active.Title + " - Sienna Editor";
     }
 
     private async Task SaveAsync(bool cfg)
@@ -438,7 +435,7 @@ public sealed partial class EditorWindow : Window
             SuggestedFileName = sourcePath.Length == 0 ? (cfg ? "Untitled.cfg" : "Untitled.cfg.bin") : Path.GetFileNameWithoutExtension(sourcePath) + (cfg ? ".cfg" : ".edited.bin"),
             FileTypeChoices = [new FilePickerFileType(cfg ? "Readable CFG" : "BIN file") { Patterns = [cfg ? "*.cfg" : "*.bin"] }]
         });
-        if (target is null) { Status.Text = "Save cancelled."; return; }
+        if (target is null) return;
         string path = target.TryGetLocalPath() ?? throw new IOException("Choose a local destination for atomic saving.");
         await WriteDocumentAsync(path, cfg, !cfg);
     }
@@ -473,7 +470,7 @@ public sealed partial class EditorWindow : Window
                 var clones = selected.Select(item => copy.GetList(listName).Rows[item.ListIndex].Clone()).ToArray();
                 foreach (var row in clones) copy.InsertListRow(listName, insertion++, row);
             }
-        }, selected[^1].Ordinal + 1, "Branch duplicated. Edit identifiers where uniqueness is required.");
+        }, selected[^1].Ordinal + 1);
     }
 
     private async Task<bool> AskAsync(string title, string message, string accept)
@@ -529,13 +526,4 @@ public sealed partial class EditorWindow : Window
     private async void ExportCfgClicked(object? sender, RoutedEventArgs args) => await RunAsync("Export CFG", () => SaveAsync(true));
     private async void DuplicateClicked(object? sender, RoutedEventArgs args) => await RunAsync("Duplicate record", DuplicateRecordAsync);
     private async void DeleteClicked(object? sender, RoutedEventArgs args) => await RunAsync("Remove entries", RemoveSelectedRecordsAsync);
-    private async void SchemaClicked(object? sender, RoutedEventArgs args)
-    {
-        if (document is null) { Status.Text = "Open a file to inspect its schema."; return; }
-        var dialog = new Window { Title = "Sienna Editor — Native schema", Width = 820, Height = 640, WindowStartupLocation = WindowStartupLocation.CenterOwner };
-        dialog.Content = new TextBox { IsReadOnly = true, AcceptsReturn = true, TextWrapping = Avalonia.Media.TextWrapping.NoWrap,
-            Text = JsonSerializer.Serialize(new { Format = document.Format.ToString(), document.BinaryVersion, document.IsBigEndian, document.T2bInfo, Types = document.Types,
-                Records = allRecords.Select(item => new { item.Row.Name, Fields = item.Row.Values.Count }).Distinct() }, new JsonSerializerOptions { WriteIndented = true }) };
-        await dialog.ShowDialog(this);
-    }
 }

@@ -89,15 +89,12 @@
       </ListBox.ItemTemplate>
     </ListBox>
     <Grid Grid.Row="3" ColumnDefinitions="320,9,*" Margin="12,10,12,0">
-      <Grid RowDefinitions="24,36,0,*">
-        <Grid ColumnDefinitions="*,Auto">
-          <TextBlock Grid.Column="1" x:Name="RecordsCount" Foreground="{DynamicResource MutedBrush}" />
-        </Grid>
-        <Grid Grid.Row="1" ColumnDefinitions="*,36" Margin="0,0,0,7">
-          <TextBox x:Name="Search" PlaceholderText="Search entries and values" ToolTip.Tip="Literal search. Case-sensitive; spaces are significant." TextChanged="SearchChanged" KeyDown="SearchKeyDown" AutomationProperties.AutomationId="search-records" />
+      <Grid RowDefinitions="36,*">
+        <Grid ColumnDefinitions="*,36" Margin="0,0,0,7">
+          <TextBox x:Name="Search" PlaceholderText="Search" ToolTip.Tip="Literal search. Case-sensitive; spaces are significant." TextChanged="SearchChanged" KeyDown="SearchKeyDown" AutomationProperties.AutomationId="search-records" />
           <Button Grid.Column="1" x:Name="RootAdd" HorizontalAlignment="Stretch" Content="+" FontSize="20" Padding="0" Margin="5,0,0,0" Click="AddRootClicked" ToolTip.Tip="Add root entry" AutomationProperties.AutomationId="add-root" AutomationProperties.Name="Add root entry" />
         </Grid>
-        <ListBox Grid.Row="3" x:Name="Records" Background="{DynamicResource ValueBrush}" BorderThickness="0"
+        <ListBox Grid.Row="1" x:Name="Records" Background="{DynamicResource ValueBrush}" BorderThickness="0"
                  SelectionMode="Multiple"
                  SelectionChanged="RecordChanged" KeyDown="TreeKeyDown" PointerPressed="RecordPointerPressed" AutomationProperties.AutomationId="records">
           <ListBox.ContextMenu>
@@ -123,7 +120,6 @@
       <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="Transparent" />
       <Grid x:Name="FieldPanel" Grid.Column="2" RowDefinitions="31,26,*" Margin="7,0,0,0">
         <Grid ColumnDefinitions="*,Auto">
-          <TextBlock Text="Fields" FontWeight="SemiBold" VerticalAlignment="Center" />
           <Button Grid.Column="1" x:Name="AddValue" Content="Add value" Click="AddValueClicked" AutomationProperties.AutomationId="add-value" />
         </Grid>
         <Grid Grid.Row="1" x:Name="FieldHeader" ColumnDefinitions="100,220,*" Margin="0,5,17,0">
@@ -141,7 +137,7 @@
                   <ComboBox Margin="0,0,6,0" ItemsSource="{Binding Kinds}" SelectedItem="{Binding SelectedKind,Mode=TwoWay}" IsVisible="{Binding CanChangeKind}" AutomationProperties.Name="Value type" />
                   <TextBox Grid.Column="1" Margin="6,0" Text="{Binding Label,Mode=TwoWay}" IsEnabled="{Binding CanEditLabel}" LostFocus="FieldNameLostFocus" ToolTip.Tip="Field names are saved automatically" AutomationProperties.Name="Field name" />
                   <TextBox Grid.Column="2" Margin="6,0,0,0" Text="{Binding Text,Mode=TwoWay}" Classes.search-match="{Binding IsSearchMatch}" AutomationProperties.Name="{Binding ValueDescription}" IsEnabled="{Binding CanEdit}" AcceptsReturn="{Binding IsString}"
-                           MaxHeight="90" TextWrapping="NoWrap" FontFamily="SF Mono,Cascadia Mono,Consolas,monospace" FontSize="12" />
+                           MaxHeight="90" TextWrapping="NoWrap" ScrollViewer.HorizontalScrollBarVisibility="Hidden" FontFamily="SF Mono,Cascadia Mono,Consolas,monospace" FontSize="12" />
                 </Grid>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
@@ -149,6 +145,6 @@
         </ScrollViewer>
       </Grid>
     </Grid>
-    <TextBlock Grid.Row="4" x:Name="Status" Text="Open a file to begin" Margin="12,4,12,0" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextTrimming="CharacterEllipsis" AutomationProperties.AutomationId="status" />
+    <TextBlock Grid.Row="4" x:Name="Status" IsVisible="{Binding #Status.Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" Margin="12,4,12,0" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextTrimming="CharacterEllipsis" AutomationProperties.AutomationId="status" />
   </Grid>
 </Window>

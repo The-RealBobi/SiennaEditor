@@ -17,21 +17,21 @@ public sealed partial class EditorWindow
     private async Task UndoAsync()
     {
         ApplyFields();
-        if (active.History.Undo is not { } target) { Status.Text = "Nothing to undo."; return; }
+        if (active.History.Undo is not { } target) {  return; }
         var before = CaptureSnapshot();
         await RestoreSnapshotAsync(target);
         active.History.CompleteUndo(before);
-        UpdateTitle(); UpdateControls(); Status.Text = "Undone.";
+        UpdateTitle(); UpdateControls();
     }
 
     private async Task RedoAsync()
     {
         ApplyFields();
-        if (active.History.Redo is not { } target) { Status.Text = "Nothing to redo."; return; }
+        if (active.History.Redo is not { } target) {  return; }
         var before = CaptureSnapshot();
         await RestoreSnapshotAsync(target);
         active.History.CompleteRedo(before);
-        UpdateTitle(); UpdateControls(); Status.Text = "Redone.";
+        UpdateTitle(); UpdateControls();
     }
 
     private async Task RestoreSnapshotAsync(EditorSnapshot snapshot)

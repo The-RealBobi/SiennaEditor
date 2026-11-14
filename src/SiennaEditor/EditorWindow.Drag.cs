@@ -48,7 +48,6 @@ public sealed partial class EditorWindow
         dropAsChild = point.X > target.Depth * 16 + 38;
         dragTarget = target; dragMarker = item;
         item.Classes.Add(dropAsChild ? "drop-child" : "drop-sibling");
-        Status.Text = dropAsChild ? "Move as child of " + target.Heading : "Move after " + target.Heading + " at the same level";
     }
 
     private async void DragEntryReleased(object? sender, PointerReleasedEventArgs args)
@@ -61,7 +60,7 @@ public sealed partial class EditorWindow
         if (!wasDragging) return;
         args.Pointer.Capture(null);
         args.Handled = true;
-        if (source is null || target is null) { Status.Text = "Move cancelled. Drop below an entry to choose its level."; return; }
+        if (source is null || target is null) {  return; }
         await RunAsync("Move entry", () => MoveEntryAsync(source, target, child));
     }
 
@@ -82,7 +81,7 @@ public sealed partial class EditorWindow
             string list = source.ListName!;
             int destination = target.Record is null ? document.GetList(list).Rows.Count : target.Record.ListIndex + 1;
             int focus = source.Record.Ordinal - source.Record.ListIndex + (destination > source.Record.ListIndex ? destination - 1 : destination);
-            await EditDocumentAsync(copy => copy.MoveListRows(list, source.Record.ListIndex, 1, destination), focus, "Entry moved; native references recalculated.");
+            await EditDocumentAsync(copy => copy.MoveListRows(list, source.Record.ListIndex, 1, destination), focus);
             return;
         }
         if (target.Record is null) throw new InvalidOperationException("Select a destination entry.");
@@ -100,7 +99,7 @@ public sealed partial class EditorWindow
         if (destinationIndex >= start && destinationIndex <= start + count)
         {
             if (!ReferenceEquals(source.Parent, parent)) throw new InvalidOperationException("The Structure cannot represent that level change at this position. Choose a compatible destination.");
-            Status.Text = "The entry is already at that position."; return;
+             return;
         }
         int parentOrdinal = parent?.Record?.Ordinal ?? -1;
         int focusOrdinal = destinationIndex > start ? destinationIndex - count : destinationIndex;
@@ -115,7 +114,7 @@ public sealed partial class EditorWindow
                 throw new InvalidOperationException("The Structure cannot preserve this parent-child relationship in the BIN. Choose a compatible destination.");
             if (before.Any(item => !ReferenceEquals(item.Key, root) && !ReferenceEquals(item.Value, after[item.Key])))
                 throw new InvalidOperationException("This move would change the parent of another entry. Move its complete branch to a compatible destination.");
-        }, focusOrdinal, "Branch moved; supported counts and references recalculated.");
+        }, focusOrdinal);
     }
 
     private List<RecordChoice> BranchRows(RecordBranch selected)

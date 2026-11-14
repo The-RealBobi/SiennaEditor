@@ -29,47 +29,34 @@ public sealed partial class EditorWindow
             await RunAsync("Field tags", () => { ApplyFields(); active.UseTags = tags.IsChecked == true; BuildFields(); return Task.CompletedTask; });
             restoringTags = true; tags.IsChecked = active.UseTags; restoringTags = false;
         };
-        var load = new Button { Content = "Add Structures…" };
+        var load = new Button { Content = "Import Structure…" };
         var reload = new Button { Content = "Reload Structures" };
         ToolTip.SetTip(reload, "Read Structure catalogs from data and apply them to every open file. Unsaved document edits are preserved; Undo and Redo history is cleared.");
-        var structure = new TextBlock { Text = ActiveStructureDescription(), TextWrapping = Avalonia.Media.TextWrapping.Wrap, Opacity = 0.7 };
-        var schema = new Button { Content = "Inspect native schema…", IsEnabled = document is not null };
         var settingsStatus = new TextBlock { TextWrapping = Avalonia.Media.TextWrapping.Wrap, Opacity = 0.7, FontSize = 12, MaxHeight = 80 };
         var statusBinding = settingsStatus.Bind(TextBlock.TextProperty, Status.GetObservable(TextBlock.TextProperty));
         var close = new Button { Content = "Close", HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right };
         Avalonia.Automation.AutomationProperties.SetAutomationId(reload, "reload-structures");
-        Avalonia.Automation.AutomationProperties.SetAutomationId(structure, "active-structure");
         Avalonia.Automation.AutomationProperties.SetAutomationId(Profiles, "structure-profiles");
         Avalonia.Automation.AutomationProperties.SetAutomationId(dialog, "settings");
         load.Click += (_, _) => { dialog.Close(); StructureClicked(this, new RoutedEventArgs()); };
-        schema.Click += (_, _) => { dialog.Close(); SchemaClicked(this, new RoutedEventArgs()); };
         close.Click += (_, _) => dialog.Close();
         var content = new StackPanel
         {
             Margin = new Avalonia.Thickness(22), Spacing = 14, Children =
             {
                 new TextBlock { Text = "Tags and field names", FontWeight = Avalonia.Media.FontWeight.SemiBold, FontSize = 16 },
-                structure, tags, Profiles,
+                tags, Profiles,
                 new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 10, Children = { load, reload } },
-                schema, settingsStatus, close
+                settingsStatus, close
             }
         };
         reload.Click += async (_, _) =>
         {
             await RunAsync("Reload Structures", ReloadStructuresAsync, [Workspace, content]);
-            structure.Text = ActiveStructureDescription();
         };
-        void UpdateStructureDescription(object? source, SelectionChangedEventArgs change)
-        {
-            structure.Text = Profiles.SelectedItem is StructureChoice choice
-                ? "Catalog: " + choice.File.Path + "\nProfile: " + (choice.Catalog.ProfileName ?? "Custom")
-                : ActiveStructureDescription();
-        }
-        Profiles.SelectionChanged += UpdateStructureDescription;
         dialog.Content = content;
         dialog.Closed += (_, _) =>
         {
-            Profiles.SelectionChanged -= UpdateStructureDescription;
             statusBinding.Dispose();
             if (Profiles.Parent is Panel panel) panel.Children.Remove(Profiles);
             dialog.Content = null; settingsWindow = null;
@@ -137,7 +124,6 @@ public sealed partial class EditorWindow
                 active = new EditorSession(session.CatalogRoot, session.Catalog, session.CatalogName);
                 changing = true; Search.Text = ""; changing = false;
                 RebuildRecords(); SetProfiles(); UpdateTitle();
-                Status.Text = "Open a file from File → Open";
             }
         }
         else { changing = true; Tabs.SelectedItem = active; changing = false; }
@@ -154,7 +140,6 @@ public sealed partial class EditorWindow
     private void UpdateControls()
     {
         bool previous = changing; changing = true;
-        RecordsCount.Text = matching.Count == allRecords.Count ? $"{allRecords.Count:N0}" : $"{matching.Count:N0} / {allRecords.Count:N0}";
         FieldHeader.ColumnDefinitions = new ColumnDefinitions(active.IsAuthoring ? "100,220,*" : "0,220,*");
         TypeHeader.IsVisible = active.IsAuthoring;
         RootAdd.IsEnabled = document?.Format == BinaryFormat.T2b;
@@ -179,7 +164,6 @@ public sealed partial class EditorWindow
             document = saved; dirty = false; sourcePath = Path.GetFullPath(path);
             RebuildRecords(); FocusOrdinal(ordinal); UpdateTitle();
         }
-        Status.Text = $"Saved {Path.GetFileName(path)} · {bytes.Length:N0} bytes";
     }
 
     private void CheckDestination(string path, bool cfg)
@@ -214,7 +198,6 @@ public sealed partial class EditorWindow
                 ActivateSession(session);
                 if (!await SaveCurrentAsync()) return;
             }
-            Status.Text = "All modified files saved.";
         }
         finally { ActivateSession(selected); }
     });
@@ -227,7 +210,6 @@ public sealed partial class EditorWindow
         var session = new EditorSession(catalogRoot, catalog, catalogName)
         { Document = CfgDocument.CreateT2b(catalog), IsAuthoring = true, Dirty = true };
         sessions.Add(session); ActivateSession(session);
-        Status.Text = "New file. Add an entry, then add values and choose their types.";
         return Task.CompletedTask;
     });
 

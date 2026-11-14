@@ -13,7 +13,7 @@ internal sealed class StructureFile
 
 internal sealed record StructureChoice(StructureFile File, StructureCatalog Catalog)
 {
-    public override string ToString() => System.IO.Path.GetFileName(File.Path) + " — " + (Catalog.ProfileName ?? "Custom");
+    public override string ToString() => System.IO.Path.GetFileName(File.Path) + " - " + (Catalog.ProfileName ?? "Custom");
 }
 
 public sealed partial class EditorWindow
@@ -70,7 +70,6 @@ public sealed partial class EditorWindow
         SaveCatalogText(file, text);
         catalog.SetFieldLabels(labels);
         foreach (var field in changed) field.AcceptLabel();
-        Status.Text = "Field names saved to " + Path.GetFileName(file.Path) + ".";
         UpdateTitle();
     }
 

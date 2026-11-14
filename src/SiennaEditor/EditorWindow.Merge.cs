@@ -72,12 +72,12 @@ public sealed partial class EditorWindow
         var pickCurrent = new Button { Content = "Browse…" }; var pickIncoming = new Button { Content = "Browse…" };
         Grid FileRow(string label, TextBox text, Button browse)
         {
-            var row = new Grid { ColumnDefinitions = new ColumnDefinitions("150,*,Auto"), ColumnSpacing = 10 };
+            var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 8 };
             row.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center });
             Grid.SetColumn(text, 1); row.Children.Add(text); Grid.SetColumn(browse, 2); row.Children.Add(browse); return row;
         }
         var inputRows = new StackPanel { Spacing = 10, Children = { FileRow("File 1", currentPath, pickCurrent), FileRow("File 2", incomingPath, pickIncoming) } };
-        var summary = new TextBlock { Text = "Select File 1 and File 2. The result keeps entries exclusive to either file.", TextWrapping = TextWrapping.Wrap };
+        var summary = new TextBlock { TextWrapping = TextWrapping.Wrap };
         var analyze = new Button { Content = "Analyze", IsEnabled = false };
         var create = new Button { Content = "Create merged file", IsEnabled = false };
         var close = new Button { Content = "Close" };
@@ -85,7 +85,7 @@ public sealed partial class EditorWindow
         var useIncoming = new Button { Content = "Use File 2 for all", IsEnabled = false };
         var removeSelected = new Button { Content = "Remove selected", IsEnabled = false };
         AutomationProperties.SetAutomationId(removeSelected, "merge-remove-selected");
-        var search = new TextBox { PlaceholderText = "Search entries and values", MinWidth = 240 };
+        var search = new TextBox { PlaceholderText = "Search", MinWidth = 240 };
         ToolTip.SetTip(search, "Literal search. Case-sensitive; spaces are significant.");
         AutomationProperties.SetAutomationId(search, "merge-search");
         AutomationProperties.SetName(search, "Search merge entries and values");
@@ -95,7 +95,7 @@ public sealed partial class EditorWindow
         var additionBrush = new SolidColorBrush(Color.Parse("#75C998"));
         var changeTree = new ListBox { SelectionMode = SelectionMode.Multiple };
         AutomationProperties.SetAutomationId(changeTree, "merge-entries");
-        var detailsTitle = new TextBlock { Text = "Select an entry to inspect its fields.", TextWrapping = TextWrapping.Wrap, FontSize = 15 };
+        var detailsTitle = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 15 };
         var conflictList = new ListBox();
         conflictList.Styles.Add(new Style(selector => selector.OfType<ListBoxItem>())
         { Setters = { new Setter(ListBoxItem.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch) } });
@@ -127,7 +127,7 @@ public sealed partial class EditorWindow
         {
             plan = null; decisions.Clear(); decisionsById.Clear(); conflictList.ItemsSource = null;
             excludedEntries.Clear(); excludedConflicts.Clear(); removeSelected.IsEnabled = false;
-            expansionBeforeFilter.Clear(); fieldsByRow.Clear(); treeRows.Clear(); changeTree.ItemsSource = null; detailsTitle.Text = "Select an entry to inspect its fields.";
+            expansionBeforeFilter.Clear(); fieldsByRow.Clear(); treeRows.Clear(); changeTree.ItemsSource = null; detailsTitle.Text = "";
             create.IsEnabled = false; useCurrent.IsEnabled = false; useIncoming.IsEnabled = false;
         }
         void SetWorking(bool value)
@@ -145,7 +145,7 @@ public sealed partial class EditorWindow
         {
             var value = side == MergeSide.Current ? item.Field.File1 : item.Field.File2;
             var target = side == MergeSide.Current ? item.Decision?.Conflict.CurrentTarget : item.Decision?.Conflict.IncomingTarget;
-            return value is null ? "—" : MergeValueText(value) + (target is null ? "" : Environment.NewLine + "Target: " + MergeValueText(target));
+            return value is null ? "Missing" : MergeValueText(value) + (target is null ? "" : Environment.NewLine + "Target: " + MergeValueText(target));
         }
         bool MatchesText(string value) => value.Contains(search.Text ?? "", StringComparison.Ordinal);
         bool MatchesEntry(MergeTreeRow row) => MatchesText(row.Entry.Name) || MatchesText(row.Entry.Label);
@@ -204,7 +204,7 @@ public sealed partial class EditorWindow
             else
             {
                 conflictList.ItemsSource = null;
-                detailsTitle.Text = visible.Count == 0 ? "No entries match the filters." : "Select an entry to inspect its fields.";
+                detailsTitle.Text = visible.Count == 0 ? "No entries match the filters." : "";
             }
             removeSelected.IsEnabled = !working && plan is not null && changeTree.SelectedItems?.Count > 0;
         }
@@ -322,7 +322,7 @@ public sealed partial class EditorWindow
                 Foreground = row.HasConflicts ? conflictBrush : row.HasAdditions ? additionBrush : Foreground,
                 TextDecorations = row.HasConflicts ? TextDecorations.Underline : null };
             string state = row.HasConflicts ? "Conflicts" : row.Entry.State == MergeEntryState.File1Only ? "File 1 only" : row.Entry.State == MergeEntryState.File2Only ? "File 2 only" : "Changes in child entries";
-            ToolTip.SetTip(label, row.Entry.Location + Environment.NewLine + state); AutomationProperties.SetName(label, row.Entry.Label + " — " + state);
+            ToolTip.SetTip(label, row.Entry.Location + Environment.NewLine + state); AutomationProperties.SetName(label, row.Entry.Label + " - " + state);
             Grid.SetColumn(label, 1); grid.Children.Add(label); return grid;
         });
         async Task Pick(bool isCurrent)
@@ -343,9 +343,9 @@ public sealed partial class EditorWindow
                 {
                     keys = await Task.Run(() => DocumentFiles.MergeKeys(currentFile, incomingFile));
                     compatible = true;
-                    summary.Text = "Ready to analyze.";
+                    summary.Text = "";
                 }
-                else summary.Text = "Select the other file to continue.";
+                else summary.Text = "";
             }
             catch (Exception error) { analyze.IsEnabled = false; summary.Text = "Cannot load merge inputs: " + error.Message; }
             finally { SetWorking(false); }
@@ -434,7 +434,6 @@ public sealed partial class EditorWindow
         {
             var session = new EditorSession(chosenRoot, chosenCatalog, chosenName) { Document = result, Dirty = true };
             sessions.Add(session); ActivateSession(session);
-            Status.Text = "Merged file created. Review the new tab and use Save as… to choose its destination.";
         }
         catch (Exception error) { Status.Text = "Cannot open the merged result: " + error.Message; }
     }

@@ -83,10 +83,10 @@ public sealed partial class EditorWindow
         {
             var rows = selected.Select(item => item.ListName is null ? copy.Rows[item.ListIndex] : copy.GetList(item.ListName).Rows[item.ListIndex]).ToArray();
             copy.RemoveRows(rows);
-        }, selected[0].Ordinal, "Entries removed; counts and references recalculated.");
+        }, selected[0].Ordinal);
     }
 
-    private async Task EditDocumentAsync(Action<CfgDocument> edit, int focusOrdinal, string message)
+    private async Task EditDocumentAsync(Action<CfgDocument> edit, int focusOrdinal)
     {
         if (document is null) throw new InvalidOperationException("Open a file first.");
         ApplyFields();
@@ -102,7 +102,6 @@ public sealed partial class EditorWindow
         active.History.Record(checkpoint);
         document = rebuilt; MarkDirty(); RebuildRecords();
         FocusOrdinal(Math.Min(focusOrdinal, allRecords.Count - 1));
-        Status.Text = message;
     }
 
     private async Task<string?> AskNameAsync(string initial)
@@ -140,7 +139,7 @@ public sealed partial class EditorWindow
                 var row = template.Clone();
                 for (int i = 0; i < row.Values.Count; i++) row.SetValue(i, EmptyValue(row.Values[i]));
                 copy.InsertListRow(listName, index, row);
-            }, ordinal, child ? "Child entry added to " + listName + "." : "Entry added at the same level.");
+            }, ordinal);
             return;
         }
 
@@ -152,7 +151,7 @@ public sealed partial class EditorWindow
         bool closing = branch?.Record is { } selected && IsClosingEntry(selected.Row.Name);
         string initial = child || closing ? childNames.FirstOrDefault() ?? "NEW_ENTRY" : branch?.Record?.Row.Name ?? "NEW_ENTRY";
         string? name = await AskNameAsync(initial);
-        if (name is null) { Status.Text = "Add cancelled."; return; }
+        if (name is null) {  return; }
         name = catalog.ResolveEntry(BinaryFormat.T2b, name);
         int insertion = child ? branch!.Record!.Ordinal + 1 : closing ? branch!.Record!.Ordinal
             : placement == EntryPlacement.Root ? RootInsertion() : SelectedRecords().LastOrDefault()?.Ordinal + 1 ?? document.Rows.Count;
@@ -177,7 +176,7 @@ public sealed partial class EditorWindow
                 throw new InvalidOperationException("The Structure cannot place this entry at the requested level. Choose a compatible entry name or load the matching Structure.");
             if (before.Any(item => !after.TryGetValue(item.Key, out var newParent) || !ReferenceEquals(item.Value, newParent)))
                 throw new InvalidOperationException("Adding this entry would change the parent of an existing entry. Choose a compatible entry name.");
-        }, insertion, child ? "Entry added as a child." : placement == EntryPlacement.Root ? "Root entry added." : "Entry added at the same level.");
+        }, insertion);
     }
 
     private static Dictionary<CfgRow, CfgRow?> RowParents(CfgDocument source)
@@ -239,13 +238,13 @@ public sealed partial class EditorWindow
     {
         if (current is null) throw new InvalidOperationException("Select a record first.");
         int ordinal = current.Ordinal, index = current.Row.Values.Count;
-        await EditDocumentAsync(copy => copy.InsertT2bValue(copy.Rows[ordinal], index, CfgValue.Signed(0)), ordinal, "Value added.");
+        await EditDocumentAsync(copy => copy.InsertT2bValue(copy.Rows[ordinal], index, CfgValue.Signed(0)), ordinal);
     });
     private async void RemoveValueClicked(object? sender, RoutedEventArgs args)
     {
         if (sender is not MenuItem { DataContext: FieldEdit field } || !field.CanRemove || current is null) return;
         int ordinal = current.Ordinal;
-        await RunAsync("Remove value", () => EditDocumentAsync(copy => copy.RemoveT2bValue(copy.Rows[ordinal], field.RootIndex), ordinal, "Value removed."));
+        await RunAsync("Remove value", () => EditDocumentAsync(copy => copy.RemoveT2bValue(copy.Rows[ordinal], field.RootIndex), ordinal));
     }
 
 }

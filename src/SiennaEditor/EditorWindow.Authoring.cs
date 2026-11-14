@@ -65,7 +65,6 @@ public sealed partial class EditorWindow
         active.History.Record(checkpoint);
         document = BinCodec.Read(bytes, catalog); MarkDirty(); RebuildRecords();
         FocusOrdinal(destination > start + count ? destination - count : start > destination ? destination : start);
-        Status.Text = changedRules ? "Branch moved. Child relationships saved to the Structure." : "Branch moved; counts and references recalculated.";
     }
 
     private static (int Row, int Parent)[] ParentPositions(CfgDocument source)

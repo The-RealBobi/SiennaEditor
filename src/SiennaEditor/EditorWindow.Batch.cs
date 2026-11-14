@@ -32,7 +32,7 @@ public sealed partial class EditorWindow
         sourceRow.Children.Add(input); Grid.SetColumn(browse, 1); sourceRow.Children.Add(browse);
         var options = new StackPanel { Spacing = 12, Children = { sourceRow, recursive, custom, outputRow } };
         var progress = new ProgressBar { Minimum = 0, Maximum = 1, Height = 7 };
-        var summary = new TextBlock { Text = "Export BIN files to readable CFG. Existing files are skipped.", TextWrapping = Avalonia.Media.TextWrapping.Wrap };
+        var summary = new TextBlock { TextWrapping = Avalonia.Media.TextWrapping.Wrap };
         var details = new TextBox { IsReadOnly = true, AcceptsReturn = true, TextWrapping = Avalonia.Media.TextWrapping.Wrap, MinHeight = 120 };
         var export = new Button { Content = "Export", IsEnabled = false };
         var close = new Button { Content = "Close" };
@@ -74,17 +74,15 @@ public sealed partial class EditorWindow
                     }).GetAwaiter().GetResult(), token));
                 summary.Text = result.ToString();
                 details.Text = string.Join(Environment.NewLine, result.Failures);
-                Status.Text = summary.Text;
             }
             catch (Exception error) { summary.Text = "Batch export failed: " + error.Message; }
             finally { running = false; busy = false; options.IsEnabled = true; export.IsEnabled = true; close.Content = "Close"; cancellation.Dispose(); cancellation = null; }
         };
-        var body = new Grid { Margin = new Thickness(20), RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,*,Auto"), RowSpacing = 14 };
-        body.Children.Add(new TextBlock { Text = "Structure: " + catalogName + " — " + (catalog.ProfileName ?? "Custom"), TextWrapping = Avalonia.Media.TextWrapping.Wrap });
-        Grid.SetRow(options, 1); body.Children.Add(options); Grid.SetRow(progress, 2); body.Children.Add(progress);
-        Grid.SetRow(summary, 3); body.Children.Add(summary); Grid.SetRow(details, 4); body.Children.Add(details);
+        var body = new Grid { Margin = new Thickness(20), RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*,Auto"), RowSpacing = 14 };
+        Grid.SetRow(options, 0); body.Children.Add(options); Grid.SetRow(progress, 1); body.Children.Add(progress);
+        Grid.SetRow(summary, 2); body.Children.Add(summary); Grid.SetRow(details, 3); body.Children.Add(details);
         var buttons = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Spacing = 10, Children = { export, close } };
-        Grid.SetRow(buttons, 5); body.Children.Add(buttons); dialog.Content = body;
+        Grid.SetRow(buttons, 4); body.Children.Add(buttons); dialog.Content = body;
         await dialog.ShowDialog(this);
     }
 
