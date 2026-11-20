@@ -30,7 +30,16 @@ public sealed partial class EditorWindow
         custom.IsCheckedChanged += (_, _) => outputRow.IsVisible = custom.IsChecked == true;
         var sourceRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8 };
         sourceRow.Children.Add(input); Grid.SetColumn(browse, 1); sourceRow.Children.Add(browse);
-        var options = new StackPanel { Spacing = 12, Children = { sourceRow, recursive, custom, outputRow } };
+        DocumentExportFormat[] formats = [DocumentExportFormat.Cfg, DocumentExportFormat.Json, DocumentExportFormat.Xml, DocumentExportFormat.Yaml];
+        var format = new ComboBox { ItemsSource = formats.Select(DocumentFiles.ExportLabel).ToArray(), SelectedIndex = 0 };
+        Avalonia.Automation.AutomationProperties.SetName(format, "Export format");
+        Avalonia.Automation.AutomationProperties.SetAutomationId(format, "batch-export-format");
+        var formatRow = new StackPanel
+        {
+            Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 8,
+            Children = { new TextBlock { Text = "Format", VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center }, format }
+        };
+        var options = new StackPanel { Spacing = 12, Children = { sourceRow, recursive, custom, outputRow, formatRow } };
         var progress = new ProgressBar { Minimum = 0, Maximum = 1, Height = 7 };
         var summary = new TextBlock { TextWrapping = Avalonia.Media.TextWrapping.Wrap };
         var details = new TextBox { IsReadOnly = true, AcceptsReturn = true, TextWrapping = Avalonia.Media.TextWrapping.Wrap, MinHeight = 120 };
@@ -58,6 +67,7 @@ public sealed partial class EditorWindow
             string source = Path.GetFullPath(input.Text!);
             string destination = Path.GetFullPath(custom.IsChecked == true ? output.Text! : source);
             bool recurse = recursive.IsChecked == true;
+            var exportFormat = formats[format.SelectedIndex];
             var root = StructureCatalog.Parse(catalogRoot.ToText());
             var selected = catalog.ProfileName is null ? root : root.ForProfile(catalog.ProfileName);
             var protectedPaths = sessions.Select(session => session.SourcePath).Concat(structureFiles.Select(file => file.Path))
@@ -66,7 +76,7 @@ public sealed partial class EditorWindow
             cancellation = new CancellationTokenSource(); var token = cancellation.Token;
             try
             {
-                var result = await Task.Run(() => DocumentFiles.ExportBatch(source, destination, recurse, selected, protectedPaths,
+                var result = await Task.Run(() => DocumentFiles.ExportBatch(source, destination, recurse, exportFormat, selected, protectedPaths,
                     update => Dispatcher.UIThread.InvokeAsync(() =>
                     {
                         progress.Maximum = Math.Max(1, update.Total); progress.Value = update.Visited;

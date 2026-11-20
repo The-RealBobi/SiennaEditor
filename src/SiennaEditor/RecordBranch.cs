@@ -8,6 +8,17 @@ internal sealed class RecordBranch : INotifyPropertyChanged
 {
     public event PropertyChangedEventHandler? PropertyChanged;
     private bool expanded;
+    private bool renaming;
+    public bool IsRenaming
+    {
+        get => renaming;
+        set
+        {
+            if (renaming == value) return;
+            renaming = value;
+            PropertyChanged?.Invoke(this, new(nameof(IsRenaming)));
+        }
+    }
     public RecordChoice? Record { get; }
     public RecordBranch? Parent { get; }
     public bool HasChildren { get; }

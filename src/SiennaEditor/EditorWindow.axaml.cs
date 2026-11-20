@@ -44,6 +44,9 @@ public sealed partial class EditorWindow : Window
         active = new EditorSession(choice.File.Root, choice.Catalog, Path.GetFileName(choice.File.Path))
         { Document = CfgDocument.CreateT2b(choice.Catalog), IsAuthoring = true };
         InitializeComponent();
+        Tabs.AddHandler(PointerPressedEvent, TabContextPressed, RoutingStrategies.Tunnel);
+        findDelay.Tick += (_, _) => RefreshFindResults();
+        FindPanel.AddHandler(KeyDownEvent, FindPanelKeyDown, RoutingStrategies.Tunnel);
         Tabs.ItemsSource = sessions;
         sessions.Add(active); Tabs.SelectedItem = active;
         Fields.ItemsSource = editors;
@@ -53,9 +56,16 @@ public sealed partial class EditorWindow : Window
         SetProfiles(); RebuildRecords(); UpdateControls();
         Status.Text = catalogLoadErrors.Length == 0 ? "" : "Some Structures were not loaded: " + catalogLoadErrors;
         changing = false;
-        Closed += (_, _) => { searchDelay?.Cancel(); searchDelay?.Dispose(); };
+        Closed += (_, _) => { findDelay.Stop(); searchDelay?.Cancel(); searchDelay?.Dispose(); };
         Closing += ClosingWindow;
         KeyDown += WindowKeyDown;
+        AddHandler(KeyDownEvent, SaveKeyDown, RoutingStrategies.Tunnel);
+        if (OperatingSystem.IsMacOS())
+        {
+            FindReplaceAction.InputGesture = new KeyGesture(Key.H, KeyModifiers.Meta | KeyModifiers.Shift);
+            SaveMenu.InputGesture = new KeyGesture(Key.S, KeyModifiers.Meta);
+            SaveAsMenu.InputGesture = new KeyGesture(Key.S, KeyModifiers.Meta | KeyModifiers.Shift);
+        }
         Records.AddHandler(PointerPressedEvent, DragEntryPressed, RoutingStrategies.Tunnel);
         Records.AddHandler(PointerMovedEvent, DragEntryMoved, RoutingStrategies.Tunnel);
         Records.AddHandler(PointerReleasedEvent, DragEntryReleased, RoutingStrategies.Tunnel);
@@ -217,6 +227,7 @@ public sealed partial class EditorWindow : Window
         }
         IncludeMatches(!string.IsNullOrEmpty(Search.Text)); ShowPage();
         UpdateControls();
+        QueueFindResults();
     }
 
     private Task<bool> FindRecordsAsync(CancellationToken token) => RunAsync("Search", () => FilterAsync(token),
@@ -308,10 +319,16 @@ public sealed partial class EditorWindow : Window
 
     private async void TreeKeyDown(object? sender, KeyEventArgs args)
     {
+        if (args.Key == Key.F2 && args.Source is not TextBox)
+        {
+            args.Handled = true;
+            BeginRecordRename();
+            return;
+        }
         if (args.Key == Key.Delete || args.Key == Key.Back && args.KeyModifiers.HasFlag(KeyModifiers.Meta))
         {
             args.Handled = true;
-            await RunAsync("Remove entries", RemoveSelectedRecordsAsync);
+            if (CanRemoveSelectedRecords()) await RunAsync("Remove entries", RemoveSelectedRecordsAsync);
             return;
         }
         if (Records.SelectedItem is not RecordBranch branch || args.Key is not (Key.Left or Key.Right)) return;
@@ -380,8 +397,8 @@ public sealed partial class EditorWindow : Window
                 }
                 return;
             }
-            int width = document.Format == BinaryFormat.T2b ? 4 : descriptor?.PrimitiveSize ?? componentWidth;
-            editors.Add(new FieldEdit(rootIndex, path, value, width, DisplayLabel(rootIndex, path, label), document.Format == BinaryFormat.T2b && path.Length == 0, active.IsAuthoring && document.Format == BinaryFormat.T2b && path.Length == 0, active.UseTags, FieldChanged));
+            int width = document.T2bValueWidth ?? descriptor?.PrimitiveSize ?? componentWidth;
+            editors.Add(new FieldEdit(rootIndex, path, value, width, DisplayLabel(rootIndex, path, label), path.Length == 0 && CanRemoveValue(rootIndex), active.IsAuthoring && document.Format == BinaryFormat.T2b && path.Length == 0, active.UseTags, FieldChanged));
         }
     }
 
@@ -407,7 +424,7 @@ public sealed partial class EditorWindow : Window
         }
         ApplyLabels();
         Assign(document!, current.Row);
-        if (checkpoint is not null) { active.History.Record(checkpoint); MarkDirty(); }
+        if (checkpoint is not null) { active.History.Record(checkpoint); MarkDirty(); QueueFindResults(); }
         BuildFields();
 
         void Assign(CfgDocument target, CfgRow row)
@@ -421,23 +438,23 @@ public sealed partial class EditorWindow : Window
     private void MarkDirty() { dirty = true; UpdateTitle(); }
     private void UpdateTitle()
     {
-        active.Title = (HasChanges ? "* " : "") + (sourcePath.Length == 0 ? "Untitled" : Path.GetFileName(sourcePath));
+        active.Title = (HasChanges ? "* " : "") + (sourcePath.Length == 0 ? active.UnsavedName : Path.GetFileName(sourcePath));
         Title = document is null ? "Sienna Editor" : active.Title + " - Sienna Editor";
     }
 
-    private async Task SaveAsync(bool cfg)
+    private async Task SaveAsAsync()
     {
         if (document is null) { Status.Text = "Open a file before saving."; return; }
         ApplyFields();
         var target = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
-            Title = cfg ? "Export readable CFG" : "Save reconstructed BIN", ShowOverwritePrompt = true,
-            SuggestedFileName = sourcePath.Length == 0 ? (cfg ? "Untitled.cfg" : "Untitled.cfg.bin") : Path.GetFileNameWithoutExtension(sourcePath) + (cfg ? ".cfg" : ".edited.bin"),
-            FileTypeChoices = [new FilePickerFileType(cfg ? "Readable CFG" : "BIN file") { Patterns = [cfg ? "*.cfg" : "*.bin"] }]
+            Title = "Save reconstructed BIN", ShowOverwritePrompt = true,
+            SuggestedFileName = sourcePath.Length == 0 ? active.UnsavedName + ".cfg.bin" : Path.GetFileNameWithoutExtension(sourcePath) + ".edited.bin",
+            FileTypeChoices = [new FilePickerFileType("BIN file") { Patterns = ["*.bin"] }]
         });
         if (target is null) return;
         string path = target.TryGetLocalPath() ?? throw new IOException("Choose a local destination for atomic saving.");
-        await WriteDocumentAsync(path, cfg, !cfg);
+        await WriteDocumentAsync(path, false, true);
     }
 
     private static void AtomicWrite(string path, byte[] bytes)
@@ -456,33 +473,35 @@ public sealed partial class EditorWindow : Window
     {
         if (document is null || current is null) throw new InvalidOperationException("Select a record first.");
         ApplyFields(); var selected = SelectedRecords();
+        if (selected.Count == 0) return;
+        await EditDocumentAsync(copy => DuplicateRecords(copy, selected), selected[^1].Ordinal + 1);
+    }
+
+    private static void DuplicateRecords(CfgDocument copy, IReadOnlyList<RecordChoice> selected)
+    {
         int insertion = selected[^1].ListIndex + 1;
-        string? listName = current.ListName;
-        await EditDocumentAsync(copy =>
+        if (selected[0].ListName is { } listName)
         {
-            if (listName is null)
-            {
-                var clones = selected.Select(item => copy.Rows[item.ListIndex].Clone()).ToArray();
-                foreach (var row in clones) copy.InsertRow(insertion++, row);
-            }
-            else
-            {
-                var clones = selected.Select(item => copy.GetList(listName).Rows[item.ListIndex].Clone()).ToArray();
-                foreach (var row in clones) copy.InsertListRow(listName, insertion++, row);
-            }
-        }, selected[^1].Ordinal + 1);
+            var clones = selected.Select(item => copy.GetList(listName).Rows[item.ListIndex].Clone()).ToArray();
+            foreach (var row in clones) copy.InsertListRow(listName, insertion++, row);
+        }
+        else
+        {
+            var clones = selected.Select(item => copy.Rows[item.ListIndex].Clone()).ToArray();
+            foreach (var row in clones) copy.InsertRow(insertion++, row);
+        }
     }
 
     private async Task<bool> AskAsync(string title, string message, string accept)
         => await AskAsync(this, title, message, accept);
 
-    private async Task<bool> AskAsync(Window owner, string title, string message, string accept)
+    private async Task<bool> AskAsync(Window owner, string title, string message, string accept, string cancel = "Keep editing")
     {
-        var dialog = new Window { Title = title, Width = 470, Height = 190, CanResize = false, WindowStartupLocation = WindowStartupLocation.CenterOwner };
+        var dialog = new Window { Title = title, Width = 470, SizeToContent = SizeToContent.Height, CanResize = false, WindowStartupLocation = WindowStartupLocation.CenterOwner };
         var yes = new Button { Content = accept };
-        var no = new Button { Content = "Keep editing" };
+        var no = new Button { Content = cancel };
         yes.Click += (_, _) => dialog.Close(true); no.Click += (_, _) => dialog.Close(false);
-        dialog.Content = new StackPanel { Margin = new Thickness(20), Spacing = 18, Children = { new TextBlock { Text = message, TextWrapping = Avalonia.Media.TextWrapping.Wrap }, new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 12, Children = { no, yes } } } };
+        dialog.Content = new StackPanel { Margin = new Thickness(16), Spacing = 12, Children = { new TextBlock { Text = message, TextWrapping = Avalonia.Media.TextWrapping.Wrap }, new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 12, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Children = { no, yes } } } };
         return await dialog.ShowDialog<bool>(owner);
     }
 
@@ -502,14 +521,38 @@ public sealed partial class EditorWindow : Window
     {
         if (busy || (args.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Meta)) == 0) return;
         if (args.Key == Key.F) { args.Handled = true; Search.Focus(); Search.SelectAll(); }
+        else if (args.Key == Key.H && (OperatingSystem.IsMacOS()
+            ? args.KeyModifiers == (KeyModifiers.Meta | KeyModifiers.Shift)
+            : args.KeyModifiers == KeyModifiers.Control))
+        { args.Handled = true; FindReplaceClicked(this, new RoutedEventArgs()); }
         else if (args.Key == Key.Z && args.KeyModifiers.HasFlag(KeyModifiers.Shift) || args.Key == Key.Y)
         { args.Handled = true; await RunAsync("Redo", RedoAsync); }
         else if (args.Key == Key.Z) { args.Handled = true; await RunAsync("Undo", UndoAsync); }
-        else if (args.Key == Key.S) { args.Handled = true; await RunAsync("Save", async () => { await SaveCurrentAsync(); }); }
         else if (args.Key == Key.E && args.KeyModifiers.HasFlag(KeyModifiers.Shift)) { args.Handled = true; ExportBatchClicked(this, new RoutedEventArgs()); }
         else if (args.Key == Key.N) { args.Handled = true; await NewDocumentAsync(); }
         else if (args.Key == Key.O) { args.Handled = true; await PickFilesAsync(); }
         else if (args.Key == Key.W) { args.Handled = true; await CloseSessionAsync(active); }
+    }
+
+    private async void SaveKeyDown(object? sender, KeyEventArgs args)
+    {
+        if (busy) return;
+        var primary = OperatingSystem.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control;
+        if (args.KeyModifiers == KeyModifiers.Alt && (args.Key == Key.S || args.PhysicalKey == PhysicalKey.S))
+        {
+            args.Handled = true;
+            await RunAsync("Save all", SaveAllAsync);
+        }
+        else if (args.Key == Key.S && args.KeyModifiers == (primary | KeyModifiers.Shift))
+        {
+            args.Handled = true;
+            await RunAsync("Save As", SaveAsAsync);
+        }
+        else if (args.Key == Key.S && args.KeyModifiers == primary)
+        {
+            args.Handled = true;
+            await RunAsync("Save", async () => { await SaveCurrentAsync(); });
+        }
     }
 
     private async void SearchKeyDown(object? sender, KeyEventArgs args)
@@ -522,8 +565,7 @@ public sealed partial class EditorWindow : Window
         args.Handled = true;
         await SearchAsync(TimeSpan.Zero);
     }
-    private async void SaveBinClicked(object? sender, RoutedEventArgs args) => await RunAsync("Save BIN", () => SaveAsync(false));
-    private async void ExportCfgClicked(object? sender, RoutedEventArgs args) => await RunAsync("Export CFG", () => SaveAsync(true));
+    private async void SaveBinClicked(object? sender, RoutedEventArgs args) => await RunAsync("Save BIN", SaveAsAsync);
     private async void DuplicateClicked(object? sender, RoutedEventArgs args) => await RunAsync("Duplicate record", DuplicateRecordAsync);
     private async void DeleteClicked(object? sender, RoutedEventArgs args) => await RunAsync("Remove entries", RemoveSelectedRecordsAsync);
 }

@@ -11,7 +11,7 @@ namespace SiennaEditor;
 internal static class CommandLine
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, Converters = { new JsonStringEnumConverter() } };
-    private static readonly HashSet<string> Commands = ["inspect", "export", "import", "export-batch", "merge"];
+    private static readonly HashSet<string> Commands = ["inspect", "export", "import", "export-batch", "merge", "replace"];
 
     public static bool IsCommand(string[] args) => args.Length > 0 && (Commands.Contains(args[0]) || args[0].StartsWith('-')
         || !File.Exists(args[0]) && Path.GetExtension(args[0]).Length == 0);
@@ -32,7 +32,9 @@ internal static class CommandLine
             var paths = new List<string>(); bool recursive = false, endOptions = false;
             var allowed = command switch
             {
-                "export-batch" => new[] { "--structure", "--profile", "--output" },
+                "export-batch" => new[] { "--structure", "--profile", "--output", "--format" },
+                "export" => new[] { "--structure", "--profile", "--format" },
+                "replace" => new[] { "--structure", "--profile", "--find", "--with" },
                 "merge" => new[] { "--structure", "--profile", "--output", "--report", "--decisions" },
                 _ => new[] { "--structure", "--profile" }
             };
@@ -44,14 +46,30 @@ internal static class CommandLine
                 { if (recursive) throw new ArgumentException("Duplicate --recursive option."); recursive = true; continue; }
                 if (!endOptions && arg.StartsWith('-'))
                 {
+                    if (command == "replace" && (arg.StartsWith("--find=", StringComparison.Ordinal)
+                        || arg.StartsWith("--with=", StringComparison.Ordinal)))
+                    {
+                        int separator = arg.IndexOf('=');
+                        if (!values.TryAdd(arg[..separator], arg[(separator + 1)..]))
+                            throw new ArgumentException("Duplicate option: " + arg[..separator]);
+                        continue;
+                    }
                     if (!allowed.Contains(arg)) throw new ArgumentException("Unknown option: " + arg);
                     if (++i == args.Length || args[i].StartsWith("--")) throw new ArgumentException("Missing value for " + arg);
                     if (!values.TryAdd(arg, args[i])) throw new ArgumentException("Duplicate option: " + arg);
                 }
                 else paths.Add(Path.GetFullPath(arg));
             }
-            int count = command is "export" or "import" or "merge" ? 2 : 1;
+            int count = command is "export" or "import" or "merge" or "replace" ? 2 : 1;
             if (paths.Count != count) throw new ArgumentException($"{command} requires {count} path argument(s). Use --help for syntax.");
+            var exportFormat = values.GetValueOrDefault("--format")?.ToLowerInvariant() switch
+            {
+                null or "cfg" => DocumentExportFormat.Cfg,
+                "json" => DocumentExportFormat.Json,
+                "xml" => DocumentExportFormat.Xml,
+                "yaml" => DocumentExportFormat.Yaml,
+                _ => throw new ArgumentException("--format must be cfg, json, xml or yaml.")
+            };
             var catalog = LoadCatalog(values.GetValueOrDefault("--structure"), values.GetValueOrDefault("--profile"));
             var protectedPaths = Directory.Exists(DocumentFiles.DataDirectory())
                 ? Directory.EnumerateFiles(DocumentFiles.DataDirectory(), "*", SearchOption.TopDirectoryOnly).Select(Path.GetFullPath).ToHashSet(PathComparer)
@@ -67,7 +85,7 @@ internal static class CommandLine
             if (command == "export-batch")
             {
                 string destination = values.GetValueOrDefault("--output") ?? paths[0];
-                var result = DocumentFiles.ExportBatch(paths[0], destination, recursive, catalog, protectedPaths,
+                var result = DocumentFiles.ExportBatch(paths[0], destination, recursive, exportFormat, catalog, protectedPaths,
                     update => Console.Error.WriteLine($"{update.Visited}/{update.Total} {update.File}"), cancellation.Token);
                 Console.WriteLine(result);
                 foreach (string failure in result.Failures) Console.Error.WriteLine("[EXPORT] " + failure);
@@ -85,10 +103,29 @@ internal static class CommandLine
             }
             if (command is "export" or "import")
             {
-                if (command == "export" ? !paths[1].EndsWith(".cfg", StringComparison.OrdinalIgnoreCase) : !DocumentFiles.IsBinaryFile(paths[1]))
-                    throw new ArgumentException(command == "export" ? "Export output must end in .cfg." : "Import output must use a supported BIN extension.");
-                Write(paths[1], command == "export" ? DocumentFiles.Export(document) : DocumentFiles.Import(document));
+                string extension = DocumentFiles.ExportExtension(exportFormat);
+                if (command == "export" && !paths[1].EndsWith(extension, StringComparison.OrdinalIgnoreCase)
+                    && (exportFormat != DocumentExportFormat.Yaml || !paths[1].EndsWith(".yml", StringComparison.OrdinalIgnoreCase)))
+                    throw new ArgumentException("Export output must end in " + extension + ".");
+                if (command == "import" && !DocumentFiles.IsBinaryFile(paths[1]))
+                    throw new ArgumentException("Import output must use a supported BIN extension.");
+                Write(paths[1], DocumentFiles.EncodeExport(document, command == "export" ? exportFormat : DocumentExportFormat.Bin));
                 Console.WriteLine("Created " + paths[1]); return 0;
+            }
+            if (command == "replace")
+            {
+                if (!values.TryGetValue("--find", out string? find) || find.Length == 0
+                    || !values.TryGetValue("--with", out string? replacement))
+                    throw new ArgumentException("Replace requires nonempty --find text and a --with value (which may be empty).");
+                bool cfg = Path.GetExtension(paths[1]).Equals(".cfg", StringComparison.OrdinalIgnoreCase);
+                if (!cfg && !DocumentFiles.IsBinaryFile(paths[1]))
+                    throw new ArgumentException("Replace output must use .cfg or a supported BIN extension.");
+                int changed = TextReplacement.Apply(document, find, replacement);
+                if (changed == 0) { Console.WriteLine("No text fields would change."); return 0; }
+                var binary = DocumentFiles.Import(document);
+                Write(paths[1], cfg ? DocumentFiles.Export(document) : binary);
+                Console.WriteLine($"Updated {changed:N0} text fields. Created {paths[1]}");
+                return 0;
             }
             var file2 = DocumentFiles.Read(paths[1], catalog);
             var keys = DocumentFiles.MergeKeys(document, file2);
@@ -219,9 +256,11 @@ internal static class CommandLine
         Without a command, opens the GUI. A BIN/CFG path opens it in the editor.
 
         inspect <input>                         Print format and entry counts as JSON
-        export <input> <output.cfg>              Export readable CFG
+        export <input> <output> [--format cfg|json|xml|yaml]
         import <input.cfg> <output.bin>          Rebuild binary from CFG
-        export-batch <folder> [--recursive] [--output <folder>]
+        replace <input> <output> --find <text> --with <text>
+                                                 Replace literal, case-sensitive text in field values
+        export-batch <folder> [--recursive] [--output <folder>] [--format cfg|json|xml|yaml]
         merge <file1> <file2> [--report <report.json>]
         merge <file1> <file2> --decisions <report.json> --output <result.bin>
 
@@ -229,7 +268,7 @@ internal static class CommandLine
         --help / -h: Show help. --version: Print version. --: End options.
         Merge report defaults to stdout. Fill its Decisions with "File 1" or "File 2".
         File 1 ordering is retained. Entries exclusive to either file are kept.
-        Outputs never overwrite existing files. Batch skips existing CFG outputs.
+        Export format defaults to CFG. Outputs never overwrite existing files; batch skips them.
         Exit codes: 0 success, 1 operation failed, 2 invalid arguments,
                     3 unresolved merge conflicts, 130 cancelled batch/merge.
         """;

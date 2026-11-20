@@ -10,6 +10,8 @@ internal sealed record BatchResult(int Saved, int Skipped, int Visited, int Tota
     public override string ToString() => $"{(Cancelled ? "Cancelled" : "Finished")}: {Saved:N0} exported, {Skipped:N0} skipped, {Failures.Count:N0} failed ({Visited:N0} / {Total:N0} files).";
 }
 
+internal enum DocumentExportFormat { Cfg, Bin, Json, Xml, Yaml }
+
 internal static class DocumentFiles
 {
     public static string DataDirectory()
@@ -39,6 +41,43 @@ internal static class DocumentFiles
             .Select(option => new MergeKey(option.Scope, option.Entry, option.SuggestedKeyPositions[0])
                 { AdditionalPositions = option.SuggestedKeyPositions.Skip(1).ToArray() }).ToArray();
 
+    public static byte[] EncodeExport(CfgDocument document, DocumentExportFormat format) => format switch
+    {
+        DocumentExportFormat.Cfg => Export(document),
+        DocumentExportFormat.Bin => Import(document),
+        _ => StructuredExport.Encode(document, format)
+    };
+
+    public static string ExportExtension(DocumentExportFormat format) => format switch
+    {
+        DocumentExportFormat.Cfg => ".cfg",
+        DocumentExportFormat.Bin => ".cfg.bin",
+        DocumentExportFormat.Json => ".json",
+        DocumentExportFormat.Xml => ".xml",
+        DocumentExportFormat.Yaml => ".yaml",
+        _ => throw new ArgumentOutOfRangeException(nameof(format))
+    };
+
+    public static string ExportLabel(DocumentExportFormat format) => format switch
+    {
+        DocumentExportFormat.Bin => "CFGBIN",
+        _ => format.ToString().ToUpperInvariant()
+    };
+
+    public static string ExportFileName(string source, DocumentExportFormat format)
+    {
+        string name = Path.GetFileName(source);
+        if (IsBinaryFile(name)) name = Path.GetFileNameWithoutExtension(name);
+        string extension = Path.GetExtension(name);
+        if (extension.Equals(".cfg", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".json", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".xml", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".yaml", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".yml", StringComparison.OrdinalIgnoreCase))
+            name = Path.GetFileNameWithoutExtension(name);
+        return (name.Length == 0 ? "Untitled" : name) + ExportExtension(format);
+    }
+
     public static byte[] Export(CfgDocument document)
     {
         string text = CfgTextCodec.WriteReadable(document);
@@ -49,7 +88,8 @@ internal static class DocumentFiles
     public static byte[] Import(CfgDocument document)
     {
         byte[] bytes = BinCodec.Write(document);
-        _ = BinCodec.Read(bytes, document.Catalog).GetRecordTree();
+        var reopened = document.T2bValueWidth is int width ? BinCodec.Read(bytes, document.Catalog, width) : BinCodec.Read(bytes, document.Catalog);
+        _ = reopened.GetRecordTree();
         return bytes;
     }
 
@@ -65,7 +105,7 @@ internal static class DocumentFiles
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 
-    public static BatchResult ExportBatch(string source, string destination, bool recursive, StructureCatalog catalog,
+    public static BatchResult ExportBatch(string source, string destination, bool recursive, DocumentExportFormat format, StructureCatalog catalog,
         IReadOnlySet<string> protectedPaths, Action<BatchProgress> progress, CancellationToken token)
     {
         source = Path.TrimEndingDirectorySeparator(Path.GetFullPath(source));
@@ -85,15 +125,14 @@ internal static class DocumentFiles
         {
             if (token.IsCancellationRequested) break;
             string relative = Path.GetRelativePath(source, file);
-            string name = Path.GetFileNameWithoutExtension(relative);
-            string target = Path.Combine(destination, Path.GetDirectoryName(relative) ?? "", name.EndsWith(".cfg", StringComparison.OrdinalIgnoreCase) ? name : name + ".cfg");
+            string target = Path.Combine(destination, Path.GetDirectoryName(relative) ?? "", ExportFileName(relative, format));
             try
             {
-                if (!targets.Add(target)) throw new IOException("Another input produces the same CFG filename.");
+                if (!targets.Add(target)) throw new IOException("Another input produces the same output filename.");
                 if (File.Exists(target) || protectedPaths.Contains(target)) skipped++;
                 else
                 {
-                    byte[] bytes = Export(Read(file, catalog));
+                    byte[] bytes = EncodeExport(Read(file, catalog), format);
                     Directory.CreateDirectory(Path.GetDirectoryName(target)!);
                     WriteNew(target, bytes); saved++;
                 }

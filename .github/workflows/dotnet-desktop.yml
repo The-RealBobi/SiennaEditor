@@ -47,7 +47,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           repository: The-RealBobi/CFGBINManager
-          ref: 381942409e4816123e0ea90e14c54036397eadcf # 1.0.4
+          ref: c907046acd2d962920ed05bbe3a6fec7b818ec4e # 1.0.6
           path: dependency/CFGBINManager
           persist-credentials: false
 

@@ -8,6 +8,8 @@ internal static class ExportProvenance
     internal static readonly string Identifier = $"SE_v{typeof(EditorWindow).Assembly.GetName().Version!.ToString(3)}";
     private static readonly byte[] Marker = Encoding.ASCII.GetBytes(Identifier);
 
+    internal static string MarkCfg(string text) => $"// {Identifier}\n" + text;
+
     internal static void MarkT2b(Span<byte> data)
     {
         if (data.Length < 48 || !data[^16..^12].SequenceEqual("\x01t2b"u8))

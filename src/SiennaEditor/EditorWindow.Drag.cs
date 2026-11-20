@@ -14,6 +14,7 @@ public sealed partial class EditorWindow
     private Point dragStart;
     private bool draggingEntry;
     private bool dropAsChild;
+    private bool? canMoveNativeEntry;
 
     private static ListBoxItem? EntryItem(Visual source) => source.GetVisualAncestors().Prepend(source).OfType<ListBoxItem>().FirstOrDefault();
 
@@ -22,7 +23,7 @@ public sealed partial class EditorWindow
         ClearEntryDrag();
         if (busy || !args.GetCurrentPoint(Records).Properties.IsLeftButtonPressed || args.Source is not Visual source) return;
         if (Records.SelectedItems?.Count > 1 || (args.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Meta | KeyModifiers.Shift)) != 0) return;
-        if (source.GetVisualAncestors().Prepend(source).OfType<Button>().Any()) return;
+        if (source.GetVisualAncestors().Prepend(source).Any(control => control is Button or TextBox)) return;
         if (EntryItem(source)?.DataContext is not RecordBranch { Record: not null } branch) return;
         dragSource = branch; dragStart = args.GetPosition(Records);
     }
@@ -46,6 +47,13 @@ public sealed partial class EditorWindow
         for (var parent = target.Parent; parent is not null; parent = parent.Parent)
             if (ReferenceEquals(parent, dragSource)) return;
         dropAsChild = point.X > target.Depth * 16 + 38;
+        if (document?.Format == BinaryFormat.Rdbnp && dragSource?.Record is { ListName: { } list } row)
+        {
+            if (target.ListName != list || dropAsChild != (target.Record is null)) return;
+            canMoveNativeEntry ??= StructureAllows(copy => copy.MoveListRows(list, row.ListIndex, 1, row.ListIndex));
+            if (canMoveNativeEntry != true) return;
+        }
+        if (dropAsChild && target.IsClosing) return;
         dragTarget = target; dragMarker = item;
         item.Classes.Add(dropAsChild ? "drop-child" : "drop-sibling");
     }
@@ -67,7 +75,7 @@ public sealed partial class EditorWindow
     private void ClearEntryDrag()
     {
         dragMarker?.Classes.Remove("drop-child"); dragMarker?.Classes.Remove("drop-sibling");
-        dragSource = null; dragTarget = null; dragMarker = null; draggingEntry = false;
+        dragSource = null; dragTarget = null; dragMarker = null; draggingEntry = false; canMoveNativeEntry = null;
     }
 
     private async Task MoveEntryAsync(RecordBranch source, RecordBranch target, bool child)

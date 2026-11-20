@@ -64,10 +64,8 @@ public sealed partial class EditorWindow
             .Where(branch => branch.Record is not null).Select(branch => branch.Record!).ToList();
     }
 
-    private async Task RemoveSelectedRecordsAsync()
+    private List<RecordChoice> SelectedRowsToRemove()
     {
-        if (document is null) throw new InvalidOperationException("Open a file first.");
-        ApplyFields();
         var selection = (Records.SelectedItems?.OfType<RecordBranch>() ?? []).ToHashSet();
         var selected = new List<RecordChoice>();
         int selectedDepth = int.MaxValue;
@@ -77,13 +75,20 @@ public sealed partial class EditorWindow
             if (selection.Contains(branch)) selectedDepth = Math.Min(selectedDepth, branch.Depth);
             if (selectedDepth != int.MaxValue && branch.Record is not null) selected.Add(branch.Record);
         }
-        if (selected.Count == 0) throw new InvalidOperationException("Select entries to remove.");
+        return selected;
+    }
+
+    private static void RemoveRecords(CfgDocument copy, IReadOnlyList<RecordChoice> selected) =>
+        copy.RemoveRows(selected.Select(item => item.ListName is null ? copy.Rows[item.ListIndex] : copy.GetList(item.ListName).Rows[item.ListIndex]).ToArray());
+
+    private async Task RemoveSelectedRecordsAsync()
+    {
+        if (document is null) throw new InvalidOperationException("Open a file first.");
+        ApplyFields();
+        var selected = SelectedRowsToRemove();
+        if (selected.Count == 0) return;
         if (!await AskAsync("Remove entries", $"Remove {selected.Count:N0} entries, including contained children?", "Remove")) return;
-        await EditDocumentAsync(copy =>
-        {
-            var rows = selected.Select(item => item.ListName is null ? copy.Rows[item.ListIndex] : copy.GetList(item.ListName).Rows[item.ListIndex]).ToArray();
-            copy.RemoveRows(rows);
-        }, selected[0].Ordinal);
+        await EditDocumentAsync(copy => RemoveRecords(copy, selected), selected[0].Ordinal);
     }
 
     private async Task EditDocumentAsync(Action<CfgDocument> edit, int focusOrdinal)
@@ -95,7 +100,8 @@ public sealed partial class EditorWindow
         {
             var copy = CfgTextCodec.Read(CfgTextCodec.Write(document), catalog);
             edit(copy);
-            var result = BinCodec.Read(BinCodec.Write(copy), catalog);
+            byte[] bytes = BinCodec.Write(copy);
+            var result = copy.T2bValueWidth is int width ? BinCodec.Read(bytes, catalog, width) : BinCodec.Read(bytes, catalog);
             _ = result.GetRecordTree();
             return result;
         });
@@ -106,7 +112,7 @@ public sealed partial class EditorWindow
 
     private async Task<string?> AskNameAsync(string initial)
     {
-        var dialog = new Window { Title = "Add entry", Width = 480, Height = 160, CanResize = false, WindowStartupLocation = WindowStartupLocation.CenterOwner };
+        var dialog = new Window { Title = "Add entry", Width = 480, SizeToContent = SizeToContent.Height, CanResize = false, WindowStartupLocation = WindowStartupLocation.CenterOwner };
         var name = new TextBox { Text = initial };
         var add = new Button { Content = "Add" }; var cancel = new Button { Content = "Cancel" };
         add.Click += (_, _) => { if (!string.IsNullOrWhiteSpace(name.Text)) dialog.Close(name.Text.Trim()); };
@@ -134,19 +140,13 @@ public sealed partial class EditorWindow
             CfgRow template = branch.Record?.Row ?? list.Rows.FirstOrDefault() ?? throw new InvalidOperationException("This empty native list has no entry template. Open a file containing this entry type.");
             int index = child ? list.Rows.Count : branch.Record!.ListIndex + 1;
             int ordinal = allRecords.TakeWhile(item => item.ListName != listName).Count() + index;
-            await EditDocumentAsync(copy =>
-            {
-                var row = template.Clone();
-                for (int i = 0; i < row.Values.Count; i++) row.SetValue(i, EmptyValue(row.Values[i]));
-                copy.InsertListRow(listName, index, row);
-            }, ordinal);
+            await EditDocumentAsync(copy => InsertNativeEntry(copy, listName, index, template), ordinal);
             return;
         }
 
         var parent = child ? branch : branch?.Parent;
         string? parentName = parent?.Record?.Row.Name;
-        var childNames = parentName is null ? [] : catalog.Counts.Where(rule => rule.Start == parentName).Select(rule => rule.Child)
-            .Concat(catalog.Children.Where(rule => rule.Parent == parentName).Select(rule => rule.Child)).Distinct(StringComparer.Ordinal).ToArray();
+        var childNames = parentName is null ? [] : ChildEntryNames(parentName).ToArray();
         if (child && childNames.Length == 0) throw new InvalidOperationException("The Structure defines no child relationship for this entry. Load a Structure that describes its children.");
         bool closing = branch?.Record is { } selected && IsClosingEntry(selected.Row.Name);
         string initial = child || closing ? childNames.FirstOrDefault() ?? "NEW_ENTRY" : branch?.Record?.Row.Name ?? "NEW_ENTRY";
@@ -196,6 +196,7 @@ public sealed partial class EditorWindow
     {
         if (sender is not MenuItem menu || !args.GetCurrentPoint(menu).Properties.IsLeftButtonPressed || args.Source is not Visual source) return;
         if (source.GetVisualAncestors().Prepend(source).OfType<MenuItem>().FirstOrDefault() != menu) return;
+        if (!canAddSibling) return;
         args.Handled = true; Records.ContextMenu?.Close();
         await RunAsync("Add entry", () => AddRecordAsync(EntryPlacement.Sibling));
     }
@@ -203,8 +204,20 @@ public sealed partial class EditorWindow
     private async void AddContextKeyDown(object? sender, KeyEventArgs args)
     {
         if (args.Key is not (Key.Enter or Key.Space) || !ReferenceEquals(args.Source, sender)) return;
+        if (!canAddSibling) return;
         args.Handled = true; Records.ContextMenu?.Close();
         await RunAsync("Add entry", () => AddRecordAsync(EntryPlacement.Sibling));
+    }
+
+    private IEnumerable<string> ChildEntryNames(string name) =>
+        catalog.Counts.Where(rule => rule.Start == name).Select(rule => rule.Child)
+            .Concat(catalog.Children.Where(rule => rule.Parent == name).Select(rule => rule.Child)).Distinct(StringComparer.Ordinal);
+
+    private static void InsertNativeEntry(CfgDocument copy, string list, int index, CfgRow template)
+    {
+        var row = template.Clone();
+        for (int i = 0; i < row.Values.Count; i++) row.SetValue(i, EmptyValue(row.Values[i]));
+        copy.InsertListRow(list, index, row);
     }
 
     private static CfgValue EmptyValue(CfgValue value) => value.Kind switch

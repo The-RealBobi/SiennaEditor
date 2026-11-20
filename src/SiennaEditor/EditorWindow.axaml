@@ -37,6 +37,17 @@
       <Setter Property="BorderBrush" Value="{DynamicResource SearchMatchBrush}" />
       <Setter Property="BorderThickness" Value="2" />
     </Style>
+    <Style Selector=":is(Button).find-icon">
+      <Setter Property="Width" Value="32" />
+      <Setter Property="MinHeight" Value="28" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector=":is(Button).find-icon > Image">
+      <Setter Property="Width" Value="18" />
+      <Setter Property="Height" Value="18" />
+    </Style>
     <Style Selector="ListBoxItem">
       <Setter Property="MinHeight" Value="25" /><Setter Property="Padding" Value="5,2" /><Setter Property="CornerRadius" Value="3" />
     </Style>
@@ -45,21 +56,28 @@
     <Style Selector="ListBoxItem.drop-child"><Setter Property="BorderBrush" Value="#69B8AE" /><Setter Property="BorderThickness" Value="2,0,0,2" /></Style>
     <Style Selector="MenuItem"><Setter Property="Padding" Value="10,3" /></Style>
   </Window.Styles>
-  <Grid x:Name="Workspace" RowDefinitions="25,46,34,*,24">
+  <Grid x:Name="Workspace" RowDefinitions="25,46,34,Auto,*,24">
     <Menu x:Name="MainMenu" Background="{DynamicResource PanelBrush}">
       <MenuItem Header="File">
         <MenuItem Header="New" Click="NewClicked" InputGesture="Ctrl+N" />
         <MenuItem Header="Open" Click="OpenClicked" InputGesture="Ctrl+O" />
         <Separator />
-        <MenuItem Header="Save" Click="SaveClicked" InputGesture="Ctrl+S" />
-        <MenuItem Header="Save as" Click="SaveBinClicked" />
-        <MenuItem Header="Save all" Click="SaveAllClicked" />
-        <MenuItem Header="Export CFG" Click="ExportCfgClicked" />
+        <MenuItem x:Name="SaveMenu" Header="Save" Click="SaveClicked" InputGesture="Ctrl+S" />
+        <MenuItem x:Name="SaveAsMenu" Header="Save As" Click="SaveBinClicked" InputGesture="Ctrl+Shift+S" />
+        <MenuItem Header="Save All" Click="SaveAllClicked" InputGesture="Alt+S" />
+        <MenuItem Header="Export">
+          <MenuItem Header="CFG" Click="ExportFormatClicked" />
+          <MenuItem Header="JSON" Click="ExportFormatClicked" />
+          <MenuItem Header="XML" Click="ExportFormatClicked" />
+          <MenuItem Header="YAML" Click="ExportFormatClicked" />
+        </MenuItem>
         <Separator />
         <MenuItem Header="Close tab" Click="CloseActiveClicked" InputGesture="Ctrl+W" />
         <MenuItem Header="Exit" Click="ExitClicked" />
       </MenuItem>
       <MenuItem Header="Edit">
+        <MenuItem x:Name="FindReplaceAction" Header="Find and Replace…" Click="FindReplaceClicked" InputGesture="Ctrl+H" />
+        <Separator />
         <MenuItem x:Name="UndoAction" Header="Undo" Click="UndoClicked" InputGesture="Ctrl+Z" AutomationProperties.AutomationId="undo-document" />
         <MenuItem x:Name="RedoAction" Header="Redo" Click="RedoClicked" InputGesture="Ctrl+Shift+Z" AutomationProperties.AutomationId="redo-document" />
       </MenuItem>
@@ -67,16 +85,23 @@
       <MenuItem Header="Tools">
         <MenuItem Header="Export batch…" Click="ExportBatchClicked" InputGesture="Ctrl+Shift+E" />
         <MenuItem Header="ConflictMerge" Click="ConflictMergeClicked" />
+        <MenuItem Header="OneForAll" Click="OneForAllClicked" />
       </MenuItem>
     </Menu>
     <Border x:Name="FileActions" Grid.Row="1" Background="{DynamicResource PanelBrush}" Padding="12,7">
       <Grid ColumnDefinitions="Auto,Auto,*">
-        <Button Content="Open" Click="OpenClicked" Margin="0,0,8,0" AutomationProperties.AutomationId="open-file" />
-        <Button Grid.Column="1" Content="Save" Click="SaveClicked" Margin="0,0,6,0" Background="{DynamicResource SelectedBrush}" AutomationProperties.AutomationId="save-file" ToolTip.Tip="Save current file (Ctrl/Cmd+S)" />
+        <Button Click="OpenClicked" Margin="0,0,8,0" AutomationProperties.AutomationId="open-file" AutomationProperties.Name="Open" ToolTip.Tip="Open">
+          <Image Source="/Assets/open.png" Width="16" Height="16" />
+        </Button>
+        <Button Grid.Column="1" Click="SaveClicked" Margin="0,0,6,0" Background="{DynamicResource SelectedBrush}"
+                AutomationProperties.AutomationId="save-file" AutomationProperties.Name="Save" ToolTip.Tip="Save">
+          <Image Source="/Assets/save.png" Width="16" Height="16" />
+        </Button>
       </Grid>
     </Border>
     <ListBox Grid.Row="2" x:Name="Tabs" Margin="12,3,12,0" Background="Transparent" BorderThickness="0,0,0,1" BorderBrush="{DynamicResource LineBrush}"
-             SelectionChanged="TabChanged" ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled"
+             SelectionChanged="TabChanged" ContextRequested="TabContextRequested"
+             ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled"
              AutomationProperties.AutomationId="document-tabs">
       <ListBox.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ListBox.ItemsPanel>
       <ListBox.Styles>
@@ -86,27 +111,80 @@
         <DataTemplate x:DataType="local:EditorSession">
           <StackPanel Orientation="Horizontal" Spacing="9" ToolTip.Tip="{Binding SourcePath}">
             <TextBlock Text="{Binding Title}" MaxWidth="290" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-            <Button Content="×" Width="20" MinHeight="22" Padding="0" Background="Transparent" Click="CloseTabClicked" AutomationProperties.Name="Close file" />
+            <Button Width="20" MinHeight="22" Padding="0" Background="Transparent" Click="CloseTabClicked"
+                    AutomationProperties.Name="Close file" ToolTip.Tip="Close tab">
+              <Image Source="/Assets/close.png" Width="12" Height="12" />
+            </Button>
           </StackPanel>
         </DataTemplate>
       </ListBox.ItemTemplate>
     </ListBox>
-    <Grid Grid.Row="3" ColumnDefinitions="320,9,*" Margin="12,10,12,0">
+    <Border Grid.Row="3" x:Name="FindPanel" IsVisible="False" Background="{DynamicResource PanelBrush}"
+            CornerRadius="5" Padding="10,7" Margin="12,8,12,0" HorizontalAlignment="Right" MaxWidth="730"
+            AutomationProperties.AutomationId="find-replace">
+      <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="Auto,*,Auto" RowSpacing="5" ColumnSpacing="7">
+        <ToggleButton x:Name="ShowReplace" Content="Replace" IsChecked="True" IsCheckedChanged="ReplaceVisibilityChanged" ToolTip.Tip="Show or hide replacement controls" />
+        <TextBox Grid.Column="1" x:Name="FindText" PlaceholderText="Find in text values" MinWidth="125"
+                 TextChanged="FindTextChanged" AutomationProperties.Name="Find text" AutomationProperties.AutomationId="replace-find" />
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+          <ToggleButton x:Name="MatchCase" Classes="find-icon" IsChecked="True" IsCheckedChanged="FindOptionChanged"
+                        ToolTip.Tip="Match case" AutomationProperties.Name="Match case">
+            <Image Source="/Assets/FindReplace/matchCase.png" />
+          </ToggleButton>
+          <ToggleButton x:Name="WholeWord" Classes="find-icon" IsCheckedChanged="FindOptionChanged"
+                        ToolTip.Tip="Match whole word" AutomationProperties.Name="Match whole word">
+            <Image Source="/Assets/FindReplace/matchWord.png" />
+          </ToggleButton>
+          <ToggleButton x:Name="UseRegex" Classes="find-icon" IsCheckedChanged="FindOptionChanged"
+                        ToolTip.Tip="Use regular expression" AutomationProperties.Name="Use regular expression">
+            <Image Source="/Assets/FindReplace/regularExpression.png" />
+          </ToggleButton>
+          <TextBlock x:Name="FindCount" MinWidth="48" VerticalAlignment="Center" AutomationProperties.AutomationId="find-count" />
+          <Button x:Name="FindPrevious" Classes="find-icon" Click="FindPreviousClicked" IsEnabled="False"
+                  ToolTip.Tip="Previous match (Shift+Enter)" AutomationProperties.Name="Previous match">
+            <Image Source="/Assets/FindReplace/arrowUp.png" />
+          </Button>
+          <Button x:Name="FindNext" Classes="find-icon" Click="FindNextClicked" IsEnabled="False"
+                  ToolTip.Tip="Next match (Enter)" AutomationProperties.Name="Next match">
+            <Image Source="/Assets/FindReplace/arrowDown.png" />
+          </Button>
+          <Button Classes="find-icon" Click="FindCloseClicked" ToolTip.Tip="Close (Escape)" AutomationProperties.Name="Close Find and Replace">
+            <Image Source="/Assets/close.png" />
+          </Button>
+        </StackPanel>
+        <Grid Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" x:Name="ReplacementRow"
+              ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="5">
+          <TextBox x:Name="ReplacementText" PlaceholderText="Replace with" AutomationProperties.Name="Replacement text"
+                   AutomationProperties.AutomationId="replace-with" />
+          <ToggleButton Grid.Column="1" x:Name="PreserveCase" Content="AB"
+                        ToolTip.Tip="Preserve capitalization" AutomationProperties.Name="Preserve capitalization" />
+          <Button Grid.Column="2" x:Name="ReplaceCurrent" Content="Replace one" Click="ReplaceCurrentClicked" IsEnabled="False" />
+          <Button Grid.Column="3" x:Name="ReplaceAll" Content="Replace all" Click="ReplaceAllClicked" IsEnabled="False" />
+        </Grid>
+        <TextBlock Grid.Row="2" Grid.ColumnSpan="3" x:Name="FindMessage" TextWrapping="Wrap"
+                   Foreground="{DynamicResource MutedBrush}" IsVisible="False" />
+      </Grid>
+    </Border>
+    <Grid Grid.Row="4" ColumnDefinitions="320,9,*" Margin="12,10,12,0">
       <Grid RowDefinitions="36,*">
         <Grid ColumnDefinitions="*,36" Margin="0,0,0,7">
           <TextBox x:Name="Search" PlaceholderText="Search" ToolTip.Tip="Literal search. Case-sensitive; spaces are significant." TextChanged="SearchChanged" KeyDown="SearchKeyDown" AutomationProperties.AutomationId="search-records" />
-          <Button Grid.Column="1" x:Name="RootAdd" HorizontalAlignment="Stretch" Content="+" FontSize="20" Padding="0" Margin="5,0,0,0" Click="AddRootClicked" ToolTip.Tip="Add root entry" AutomationProperties.AutomationId="add-root" AutomationProperties.Name="Add root entry" />
+          <Button Grid.Column="1" x:Name="RootAdd" HorizontalAlignment="Stretch" Padding="0" Margin="5,0,0,0" Click="AddRootClicked"
+                  ToolTip.Tip="Add root entry" AutomationProperties.AutomationId="add-root" AutomationProperties.Name="Add root entry">
+            <Image Source="/Assets/add.png" Width="16" Height="16" />
+          </Button>
         </Grid>
         <ListBox Grid.Row="1" x:Name="Records" Background="{DynamicResource ValueBrush}" BorderThickness="0"
                  SelectionMode="Multiple"
                  SelectionChanged="RecordChanged" KeyDown="TreeKeyDown" PointerPressed="RecordPointerPressed" AutomationProperties.AutomationId="records">
           <ListBox.ContextMenu>
-            <ContextMenu>
+            <ContextMenu Opening="RecordMenuOpening">
               <MenuItem x:Name="AddContext" Header="Add entry" AutomationProperties.AutomationId="add-entry-context">
-                <MenuItem Header="As child" Click="AddChildClicked" AutomationProperties.AutomationId="add-child-context" />
+                <MenuItem x:Name="AddChildAction" Header="As child" Click="AddChildClicked" AutomationProperties.AutomationId="add-child-context" />
               </MenuItem>
-              <MenuItem Header="Duplicate" Click="DuplicateClicked" />
-              <MenuItem Header="Remove selected" Click="DeleteClicked" AutomationProperties.AutomationId="remove-records" />
+              <MenuItem x:Name="RenameRecordAction" Header="Rename" Click="RenameRecordClicked" InputGesture="F2" />
+              <MenuItem x:Name="DuplicateRecordAction" Header="Duplicate" Click="DuplicateClicked" />
+              <MenuItem x:Name="DeleteRecordsAction" Header="Remove selected" Click="DeleteClicked" AutomationProperties.AutomationId="remove-records" />
             </ContextMenu>
           </ListBox.ContextMenu>
           <ListBox.ItemTemplate>
@@ -114,7 +192,11 @@
               <Grid ColumnDefinitions="17,*" Margin="{Binding Indent}" MinHeight="23" ToolTip.Tip="{Binding Heading}">
                 <Button Content="{Binding Toggle}" IsVisible="{Binding HasChildren}" Click="ToggleClicked" Width="17" MinHeight="23"
                         Padding="0" Background="Transparent" AutomationProperties.Name="{Binding ToggleName}" />
-                <TextBlock Grid.Column="1" Inlines="{Binding HeadingParts}" Opacity="{Binding HeadingOpacity}" AutomationProperties.Name="{Binding SearchDescription}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="1" Inlines="{Binding HeadingParts}" Opacity="{Binding HeadingOpacity}" IsVisible="{Binding !IsRenaming}"
+                           AutomationProperties.Name="{Binding SearchDescription}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <TextBox Grid.Column="1" IsVisible="{Binding IsRenaming}" Classes="entry-rename"
+                         AutomationProperties.Name="Entry name" AutomationProperties.AutomationId="entry-rename"
+                         KeyDown="RenameRecordKeyDown" LostFocus="RenameRecordLostFocus" />
               </Grid>
             </DataTemplate>
           </ListBox.ItemTemplate>
@@ -123,7 +205,10 @@
       <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="Transparent" />
       <Grid x:Name="FieldPanel" Grid.Column="2" RowDefinitions="31,26,*" Margin="7,0,0,0">
         <Grid ColumnDefinitions="*,Auto">
-          <Button Grid.Column="1" x:Name="AddValue" Content="Add value" Click="AddValueClicked" AutomationProperties.AutomationId="add-value" />
+          <Button Grid.Column="1" x:Name="AddValue" Click="AddValueClicked"
+                  AutomationProperties.AutomationId="add-value" AutomationProperties.Name="Add value" ToolTip.Tip="Add value">
+            <Image Source="/Assets/add.png" Width="16" Height="16" />
+          </Button>
         </Grid>
         <Grid Grid.Row="1" x:Name="FieldHeader" ColumnDefinitions="100,220,*" Margin="0,5,17,0">
           <TextBlock x:Name="TypeHeader" Text="Type" Foreground="{DynamicResource MutedBrush}" />
@@ -148,6 +233,6 @@
         </ScrollViewer>
       </Grid>
     </Grid>
-    <TextBlock Grid.Row="4" x:Name="Status" IsVisible="{Binding #Status.Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" Margin="12,4,12,0" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextTrimming="CharacterEllipsis" AutomationProperties.AutomationId="status" />
+    <TextBlock Grid.Row="5" x:Name="Status" IsVisible="{Binding #Status.Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" Margin="12,4,12,0" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextTrimming="CharacterEllipsis" AutomationProperties.AutomationId="status" />
   </Grid>
 </Window>

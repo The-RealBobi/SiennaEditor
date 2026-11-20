@@ -15,13 +15,15 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="$(CfgBinManagerSource)/src/CFGBINManager/CFGBINManager.csproj" Condition="'$(UseCfgBinManagerSource)' == 'true'" />
-    <PackageReference Include="CFGBINManager" Version="[1.0.4]" GeneratePathProperty="true" ExcludeAssets="contentFiles" Condition="'$(UseCfgBinManagerSource)' != 'true'" />
+    <PackageReference Include="CFGBINManager" Version="[1.0.6]" GeneratePathProperty="true" ExcludeAssets="contentFiles" Condition="'$(UseCfgBinManagerSource)' != 'true'" />
     <PackageReference Include="Avalonia" Version="12.1.0" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />
     <Content Include="$(CfgBinManagerCatalog)" Link="data/structure.cfg" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <Content Include="../../LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
-    <AvaloniaResource Include="Assets/app.png" />
+    <Content Include="../../LICENSE-MATERIAL-DESIGN-ICONS.txt" Link="LICENSE-MATERIAL-DESIGN-ICONS.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <AvaloniaResource Include="Assets/*.png" />
+    <AvaloniaResource Include="Assets/FindReplace/*.png" />
     <EmbeddedResource Include="$(CfgBinManagerCatalog)" LogicalName="structure.cfg" />
   </ItemGroup>
   <Target Name="KeepCatalogExternal" AfterTargets="ComputeResolvedFilesToPublishList">

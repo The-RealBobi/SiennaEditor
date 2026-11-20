@@ -79,11 +79,11 @@ internal sealed class FieldEdit : INotifyPropertyChanged
     private CfgValue Template()
     {
         if (selectedKind == DisplayKind(Original.Kind)) return Original;
-        uint bits = Original.Kind == ValueKind.String ? 0 : unchecked((uint)Original.Bits);
+        ulong bits = Original.Kind == ValueKind.String ? 0 : Width == 8 ? Original.Bits : unchecked((uint)Original.Bits);
         return selectedKind switch
         {
-            "Int" => CfgValue.Signed(unchecked((int)bits)),
-            "Float" => new CfgValue(ValueKind.Float32, bits, null, []),
+            "Int" => CfgValue.Signed(Width == 8 ? unchecked((long)bits) : unchecked((int)bits)),
+            "Float" => new CfgValue(Width == 8 ? ValueKind.Float64 : ValueKind.Float32, bits, null, []),
             "Raw" => new CfgValue(ValueKind.Opaque, bits, null, []),
             _ => CfgValue.String(ValueText.Format(Original))
         };

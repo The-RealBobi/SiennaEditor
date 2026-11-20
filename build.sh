@@ -14,7 +14,7 @@ if [[ "$rid" == osx-* ]]; then
   bundle="$output/Sienna Editor.app"
   mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources/data"
   cp -R "$output/data/." "$bundle/Contents/Resources/data/"
-  cp "$output/LICENSE" "$bundle/Contents/Resources/LICENSE"
+  cp "$output/LICENSE" "$output/LICENSE-MATERIAL-DESIGN-ICONS.txt" "$bundle/Contents/Resources/"
   cp "$root/src/SiennaEditor/Assets/app.icns" "$bundle/Contents/Resources/app.icns"
   mv "$output/Sienna Editor" "$bundle/Contents/MacOS/Sienna Editor"
   cat > "$bundle/Contents/Info.plist" <<EOF
@@ -38,6 +38,6 @@ else
   executable="Sienna Editor"
   [[ "$rid" == win-* ]] && executable="$executable.exe"
   rm -f "$archive"
-  (cd "$output" && zip -q -r "$archive" "$executable" data LICENSE)
+  (cd "$output" && zip -q -r "$archive" "$executable" data LICENSE LICENSE-MATERIAL-DESIGN-ICONS.txt)
 fi
 echo "Created $archive"

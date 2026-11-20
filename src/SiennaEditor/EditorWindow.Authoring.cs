@@ -9,6 +9,7 @@ public sealed partial class EditorWindow
         ApplyFields();
         var checkpoint = CaptureSnapshot();
         var original = document!;
+        int width = original.T2bValueWidth!.Value;
         var oldPositions = original.Rows.Select((row, index) => (row, index)).ToDictionary(item => item.row, item => item.index);
         var originalParents = RowParents(original);
         var candidateRoot = StructureCatalog.Parse(catalogRoot.ToText());
@@ -44,7 +45,7 @@ public sealed partial class EditorWindow
                     throw new InvalidOperationException("That relation would also reparent other entries with the same names. Use distinct entry names or explicit list blocks.");
             }
             byte[] result = BinCodec.Write(copy);
-            _ = BinCodec.Read(result, candidate).GetRecordTree();
+            _ = BinCodec.Read(result, candidate, width).GetRecordTree();
             return result;
         });
         if (changedRules)
@@ -63,7 +64,7 @@ public sealed partial class EditorWindow
             active.AuthoredChildren.IntersectWith(candidate.Children); active.AuthoredChildren.UnionWith(addedRules);
         }
         active.History.Record(checkpoint);
-        document = BinCodec.Read(bytes, catalog); MarkDirty(); RebuildRecords();
+        document = BinCodec.Read(bytes, catalog, width); MarkDirty(); RebuildRecords();
         FocusOrdinal(destination > start + count ? destination - count : start > destination ? destination : start);
     }
 

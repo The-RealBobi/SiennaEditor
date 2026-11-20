@@ -112,7 +112,8 @@ public sealed partial class EditorWindow
             try { ApplyFields(); }
             catch (Exception error) { Status.Text = "Cannot close file: " + error.Message; return; }
         }
-        if ((selected ? HasChanges : session.Dirty) && !await AskAsync("Unsaved changes", $"Discard changes and close {Path.GetFileName(session.SourcePath)}?", "Discard and close")) return;
+        string name = session.SourcePath.Length == 0 ? session.UnsavedName : Path.GetFileName(session.SourcePath);
+        if ((selected ? HasChanges : session.Dirty) && !await AskAsync("Unsaved changes", $"Discard changes and close {name}?", "Discard and close")) return;
         int index = sessions.IndexOf(session);
         changing = true; sessions.Remove(session); changing = false;
         if (selected)
@@ -154,9 +155,11 @@ public sealed partial class EditorWindow
         if (document is null) throw new InvalidOperationException("Open a file before saving.");
         ApplyFields(); int ordinal = current?.Ordinal ?? -1;
         CheckDestination(path, cfg);
-        byte[] bytes = await Task.Run(() => cfg ? Encoding.UTF8.GetBytes(CfgTextCodec.WriteReadable(document) + $"\n// {ExportProvenance.Identifier}\n") : BinCodec.Write(document));
+        byte[] bytes = await Task.Run(() => cfg ? Encoding.UTF8.GetBytes(ExportProvenance.MarkCfg(CfgTextCodec.WriteReadable(document))) : BinCodec.Write(document));
         if (!cfg) ExportProvenance.MarkT2b(bytes);
-        CfgDocument saved = await Task.Run(() => cfg ? CfgTextCodec.Read(Encoding.UTF8.GetString(bytes), catalog) : BinCodec.Read(bytes, catalog));
+        int? valueWidth = document.T2bValueWidth;
+        CfgDocument saved = await Task.Run(() => cfg ? CfgTextCodec.Read(Encoding.UTF8.GetString(bytes), catalog)
+            : valueWidth is int width ? BinCodec.Read(bytes, catalog, width) : BinCodec.Read(bytes, catalog));
         _ = saved.GetRecordTree();
         await Task.Run(() => AtomicWrite(path, bytes));
         if (markSaved)
@@ -183,12 +186,14 @@ public sealed partial class EditorWindow
     private async Task<bool> SaveCurrentAsync()
     {
         if (document is null) { Status.Text = "Open a file before saving."; return false; }
-        if (sourcePath.Length == 0) { await SaveAsync(false); return !HasChanges; }
+        if (sourcePath.Length == 0) { await SaveAsAsync(); return !HasChanges; }
         await WriteDocumentAsync(sourcePath, Path.GetExtension(sourcePath).Equals(".cfg", StringComparison.OrdinalIgnoreCase), true);
         return true;
     }
     private async void SaveClicked(object? sender, RoutedEventArgs args) => await RunAsync("Save", async () => { await SaveCurrentAsync(); });
-    private async void SaveAllClicked(object? sender, RoutedEventArgs args) => await RunAsync("Save all", async () =>
+    private async void SaveAllClicked(object? sender, RoutedEventArgs args) => await RunAsync("Save all", SaveAllAsync);
+
+    private async Task SaveAllAsync()
     {
         ApplyFields(); var selected = active;
         try
@@ -200,7 +205,7 @@ public sealed partial class EditorWindow
             }
         }
         finally { ActivateSession(selected); }
-    });
+    }
 
     private async void NewClicked(object? sender, RoutedEventArgs args) => await NewDocumentAsync();
 
